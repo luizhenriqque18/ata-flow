@@ -9,11 +9,12 @@ if 'av' not in sys.modules:
 
 from faster_whisper import WhisperModel
 
-# Tentar importar torch para verificação de CUDA de forma leve
+# Verificar disponibilidade de CUDA usando ctranslate2 diretamente (sem depender do PyTorch)
 try:
-    import torch
-    has_cuda = torch.cuda.is_available()
-except ImportError:
+    import ctranslate2
+    supported_cuda = ctranslate2.get_supported_compute_types("cuda")
+    has_cuda = len(supported_cuda) > 0
+except Exception:
     has_cuda = False
 
 logger = logging.getLogger(__name__)
