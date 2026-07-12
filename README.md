@@ -66,6 +66,9 @@ python main.py --mic-index 1 --sys-index 28
 ```
 
 ### Argumentos Opcionais Avançados
+- `--list-llms` (Lista todos os modelos LLM instalados no Ollama e sai).
+- `--llm` (O modelo do Ollama para gerar o resumo. Padrão: `llama3.2:1b`):
+  `python main.py --llm phi3.5:latest`
 - `--model` (Tamanho do modelo. Padrão: `small`):
   `python main.py --model base` *(Aviso: Modelos como `medium` ou superiores exigem mais de 4GB de VRAM).*
 - `--chunk` (Tamanho da gravação em segundos enviada pra IA por vez. Padrão: `10.0`).

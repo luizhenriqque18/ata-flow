@@ -17,6 +17,18 @@ class LocalSummarizer:
         except Exception:
             return False
 
+    @staticmethod
+    def get_available_models():
+        try:
+            req = urllib.request.Request("http://localhost:11434/api/tags", method="GET")
+            with urllib.request.urlopen(req, timeout=2.0) as response:
+                if response.status == 200:
+                    data = json.loads(response.read().decode('utf-8'))
+                    return [m.get("name") for m in data.get("models", [])]
+                return []
+        except Exception:
+            return []
+
     def summarize(self, text):
         if not text.strip():
             return "Nenhuma transcrição foi gerada para resumir."
@@ -24,12 +36,15 @@ class LocalSummarizer:
         prompt = f"""Você é um assistente especialista em criar atas de reuniões corporativas.
 Sua tarefa é analisar a transcrição bruta da reunião abaixo e produzir um resumo profissional em formato Markdown.
 
+Use linguagem formal, objetiva e concisa. Evite repetições e paráfrases longas.
+A transcrição pode conter erros de reconhecimento de voz — interprete com bom senso, mas não corrija nomes próprios sem certeza.
+
 Siga EXATAMENTE esta estrutura:
 
 # Ata da Reunião
 
 ## 📝 Resumo Geral
-(Um parágrafo resumindo o contexto principal)
+(Um parágrafo resumindo o contexto e objetivo principal da reunião)
 
 ## 📌 Principais Pontos Discutidos
 - (Tópico 1)
@@ -39,13 +54,15 @@ Siga EXATAMENTE esta estrutura:
 - (Decisão 1)
 
 ## 🛠️ Tarefas e Próximos Passos
-- (Tarefa 1)
+- [Responsável] — [Tarefa] — [Prazo, se mencionado]
 
 ## ❓ Questões Pendentes ou Incertezas
-- (Se houver alguma)
+- (Dúvidas ou pontos que ficaram sem resolução)
 
 REGRA: Responda SOMENTE em Português do Brasil.
-REGRA: Não invente nomes de pessoas, prazos ou tarefas que não estejam na transcrição. Se algo não foi discutido, deixe a categoria em branco.
+REGRA: Não invente nomes, prazos ou tarefas que não estejam explicitamente na transcrição.
+REGRA: Se uma seção não tiver informação relevante, escreva "Nenhum item identificado."
+REGRA: Não adicione comentários, explicações ou texto fora da estrutura acima.
 
 --- TRANSCRIÇÃO ---
 {text}

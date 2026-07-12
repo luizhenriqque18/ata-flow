@@ -30,6 +30,8 @@ def parse_args():
     parser.add_argument("--list-devices", action="store_true", help="Lista os dispositivos de áudio disponíveis e sai")
     parser.add_argument("--mic-index", type=int, default=None, help="Índice do microfone a ser capturado")
     parser.add_argument("--sys-index", type=int, default=None, help="Índice do loopback de áudio do sistema")
+    parser.add_argument("--llm", type=str, default="llama3.2:1b", help="Modelo LLM do Ollama para gerar o resumo (default: llama3.2:1b)")
+    parser.add_argument("--list-llms", action="store_true", help="Lista os modelos LLM instalados no Ollama e sai")
     return parser.parse_args()
 
 class AppCLI:
@@ -105,7 +107,7 @@ class AppCLI:
         
         # Etapa de Resumo Local
         from summarizer import LocalSummarizer
-        summarizer = LocalSummarizer()
+        summarizer = LocalSummarizer(model_name=self.args.llm)
         
         if summarizer.is_available():
             console.print(Panel("[bold cyan]🤖 Gerando Resumo Inteligente com Ollama...[/]\nIsso pode levar alguns minutos dependendo do tamanho da reunião.", expand=False))
@@ -129,6 +131,23 @@ class AppCLI:
 if __name__ == "__main__":
     args = parse_args()
     
+    if args.list_llms:
+        from summarizer import LocalSummarizer
+        from rich.table import Table
+        
+        models = LocalSummarizer.get_available_models()
+        if not models:
+            console.print("[bold red]Ollama não encontrado ou nenhum modelo instalado. Verifique se o serviço está rodando.[/]")
+        else:
+            console.print("\n[bold cyan]Modelos LLM Instalados no Ollama[/]")
+            t_llms = Table(show_header=True, header_style="bold magenta")
+            t_llms.add_column("Nome do Modelo")
+            for m in models:
+                t_llms.add_row(m)
+            console.print(t_llms)
+            console.print("\nPara usar um desses modelos, rode o script passando [bold yellow]--llm <Nome>[/]")
+        sys.exit(0)
+        
     if args.list_devices:
         from audio_capture import AudioCapture
         from rich.table import Table
