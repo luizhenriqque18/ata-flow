@@ -1,7 +1,6 @@
 __pycache__/
 *.pyc
-.env
+.venv/
 venv/
-env/
-.pytest_cache/
+transcriber.log
 transcricoes/
