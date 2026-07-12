@@ -81,10 +81,25 @@ class SessionManager:
             if sys_new:
                 sys_buffer = np.concatenate([sys_buffer] + sys_new)
                 
-            # Verifica se temos o suficiente para um chunk inteiro
             if len(mic_buffer) >= chunk_samples or len(sys_buffer) >= chunk_samples:
                 mic_chunk = mic_buffer[:chunk_samples] if len(mic_buffer) > 0 else np.array([], dtype=np.float32)
                 sys_chunk = sys_buffer[:chunk_samples] if len(sys_buffer) > 0 else np.array([], dtype=np.float32)
+                
+                # Diarização simples baseada na energia (RMS) de cada canal
+                mic_rms = np.sqrt(np.mean(mic_chunk**2)) if len(mic_chunk) > 0 else 0.0
+                sys_rms = np.sqrt(np.mean(sys_chunk**2)) if len(sys_chunk) > 0 else 0.0
+                
+                mic_active = mic_rms > 0.005
+                sys_active = sys_rms > 0.005
+                
+                if mic_active and sys_active:
+                    speaker_tag = "[Você + Outros]"
+                elif mic_active:
+                    speaker_tag = "[Você]"
+                elif sys_active:
+                    speaker_tag = "[Outros]"
+                else:
+                    speaker_tag = ""
                 
                 mixed = AudioCapture.mix_and_normalize(mic_chunk, sys_chunk)
                 
@@ -102,7 +117,8 @@ class SessionManager:
                 
                 self.transcription_queue.put({
                     "audio": mixed,
-                    "offset": current_time_offset
+                    "offset": current_time_offset,
+                    "speaker_tag": speaker_tag
                 })
                 
                 current_time_offset += (step_samples / sample_rate)
@@ -118,6 +134,7 @@ class SessionManager:
                 item = self.transcription_queue.get(timeout=1.0)
                 audio_data = item["audio"]
                 offset = item["offset"]
+                speaker_tag = item.get("speaker_tag", "")
                 
                 segments = self.transcriber.transcribe(audio_data)
                 
@@ -131,7 +148,8 @@ class SessionManager:
                         start_time_str = self._format_time(offset)
                         end_time_str = self._format_time(offset + segments[-1]["end"])
                         
-                        formatted = f"[{start_time_str} - {end_time_str}] {deduped_text}\n"
+                        tag_str = f"{speaker_tag} " if speaker_tag else ""
+                        formatted = f"[{start_time_str} - {end_time_str}] {tag_str}{deduped_text}\n"
                         self._save_to_file(formatted)
                         
                         self.session_events.put({
