@@ -98,7 +98,7 @@ REGRA: Não adicione comentários, explicações ou texto fora da estrutura acim
 """
 
 class GeminiSummarizer:
-    def __init__(self, model_name="gemini-2.5-flash"):
+    def __init__(self, model_name="gemini-2.0-flash"):
         self.model_name = model_name
         self.api_key = get_gemini_key()
         self.api_url = f"https://generativelanguage.googleapis.com/v1beta/models/{self.model_name}:generateContent?key={self.api_key}"
@@ -171,7 +171,7 @@ class SummarizerFactory:
     def get_summarizer(provider, model_name=None):
         if provider == "gemini":
             if model_name is None or model_name == "llama3.2:1b":
-                model_name = "gemini-2.5-flash"
+                model_name = "gemini-2.0-flash"
             return GeminiSummarizer(model_name=model_name)
         else: # ollama
             if model_name is None:
