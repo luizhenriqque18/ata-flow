@@ -1,4 +1,12 @@
+import sys
 import logging
+from unittest.mock import MagicMock
+
+# Workaround para Política de Controle de Aplicativo (Windows) que bloqueia a DLL do PyAV.
+# Como passamos um numpy array diretamente pro modelo, não precisamos do 'av' para decodificar arquivos.
+if 'av' not in sys.modules:
+    sys.modules['av'] = MagicMock()
+
 from faster_whisper import WhisperModel
 
 # Tentar importar torch para verificação de CUDA de forma leve
