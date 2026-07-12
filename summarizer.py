@@ -1,10 +1,12 @@
 import json
 import logging
 import urllib.request
+import urllib.error
+from config import get_gemini_key
 
 logger = logging.getLogger(__name__)
 
-class LocalSummarizer:
+class OllamaSummarizer:
     def __init__(self, model_name="llama3.2:1b", api_url="http://localhost:11434/api/generate"):
         self.model_name = model_name
         self.api_url = api_url
@@ -33,7 +35,34 @@ class LocalSummarizer:
         if not text.strip():
             return "Nenhuma transcrição foi gerada para resumir."
             
-        prompt = f"""Você é um assistente especialista em criar atas de reuniões corporativas.
+        prompt = self._get_prompt(text)
+        
+        data = {
+            "model": self.model_name,
+            "prompt": prompt,
+            "stream": False
+        }
+        
+        req = urllib.request.Request(
+            self.api_url, 
+            data=json.dumps(data).encode('utf-8'),
+            headers={'Content-Type': 'application/json'}
+        )
+        
+        try:
+            logger.info("Enviando transcrição para o Ollama (isso pode levar alguns segundos)...")
+            with urllib.request.urlopen(req, timeout=120.0) as response:
+                if response.status == 200:
+                    result = json.loads(response.read().decode('utf-8'))
+                    return result.get("response", "Erro: Resposta vazia da IA.")
+                else:
+                    return f"Erro na API do Ollama: {response.status}"
+        except Exception as e:
+            logger.error(f"Erro ao chamar Ollama: {e}")
+            return f"Erro interno ao tentar gerar o resumo: {e}"
+
+    def _get_prompt(self, text):
+        return f"""Você é um assistente especialista em criar atas de reuniões corporativas.
 Sua tarefa é analisar a transcrição bruta da reunião abaixo e produzir um resumo profissional em formato Markdown.
 
 Use linguagem formal, objetiva e concisa. Evite repetições e paráfrases longas.
@@ -67,11 +96,29 @@ REGRA: Não adicione comentários, explicações ou texto fora da estrutura acim
 --- TRANSCRIÇÃO ---
 {text}
 """
+
+class GeminiSummarizer:
+    def __init__(self, model_name="gemini-2.5-flash"):
+        self.model_name = model_name
+        self.api_key = get_gemini_key()
+        self.api_url = f"https://generativelanguage.googleapis.com/v1beta/models/{self.model_name}:generateContent?key={self.api_key}"
+
+    def is_available(self):
+        return bool(self.api_key)
+
+    def summarize(self, text):
+        if not text.strip():
+            return "Nenhuma transcrição foi gerada para resumir."
+            
+        if not self.is_available():
+            return "Erro: Chave da API do Gemini não configurada. Use --set-gemini-key para configurar."
+            
+        prompt = OllamaSummarizer()._get_prompt(text)
         
         data = {
-            "model": self.model_name,
-            "prompt": prompt,
-            "stream": False
+            "contents": [{
+                "parts": [{"text": prompt}]
+            }]
         }
         
         req = urllib.request.Request(
@@ -81,13 +128,36 @@ REGRA: Não adicione comentários, explicações ou texto fora da estrutura acim
         )
         
         try:
-            logger.info("Enviando transcrição para o Ollama (isso pode levar alguns segundos)...")
+            logger.info(f"Enviando transcrição para o Gemini ({self.model_name})...")
             with urllib.request.urlopen(req, timeout=120.0) as response:
                 if response.status == 200:
                     result = json.loads(response.read().decode('utf-8'))
-                    return result.get("response", "Erro: Resposta vazia da IA.")
+                    try:
+                        return result["candidates"][0]["content"]["parts"][0]["text"]
+                    except (KeyError, IndexError):
+                        return "Erro: Resposta inesperada do Gemini."
                 else:
-                    return f"Erro na API do Ollama: {response.status}"
+                    return f"Erro na API do Gemini: {response.status}"
+        except urllib.error.HTTPError as e:
+             logger.error(f"Erro HTTP do Gemini: {e.code} - {e.reason}")
+             try:
+                 err_body = e.read().decode('utf-8')
+                 logger.error(f"Detalhes do erro: {err_body}")
+             except:
+                 pass
+             return f"Erro na API do Gemini: {e.code}"
         except Exception as e:
-            logger.error(f"Erro ao chamar Ollama: {e}")
-            return f"Erro interno ao tentar gerar o resumo: {e}"
+            logger.error(f"Erro ao chamar Gemini: {e}")
+            return f"Erro interno ao tentar gerar o resumo via Gemini: {e}"
+
+class SummarizerFactory:
+    @staticmethod
+    def get_summarizer(provider, model_name=None):
+        if provider == "gemini":
+            if model_name is None or model_name == "llama3.2:1b":
+                model_name = "gemini-2.5-flash"
+            return GeminiSummarizer(model_name=model_name)
+        else: # ollama
+            if model_name is None:
+                model_name = "llama3.2:1b"
+            return OllamaSummarizer(model_name=model_name)

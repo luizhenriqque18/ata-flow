@@ -38,13 +38,21 @@ pip install nvidia-cublas-cu12 nvidia-cudnn-cu12
 *(O script injeta essas bibliotecas dinamicamente no PATH, você não precisa configurar variáveis de ambiente).*
 
 ### 4. Instalar o Motor de Resumos (Opcional, mas recomendado)
-Para que o sistema consiga gerar atas automáticas após as reuniões, ele precisa do **Ollama**.
+Para que o sistema consiga gerar atas automáticas após as reuniões, ele possui suporte nativo a dois provedores de Inteligência Artificial:
+
+**Opção A: Ollama (100% Offline, Maior Privacidade)**
 1. Baixe e instale o [Ollama para Windows](https://ollama.com/).
-2. Abra um terminal comum (ou o PowerShell) e baixe o modelo leve que utilizamos como padrão:
+2. Abra um terminal comum e baixe o modelo leve que utilizamos como padrão:
 ```bash
 ollama run llama3.2:1b
 ```
-*(Você pode fechar o terminal após o download. O serviço ficará rodando em segundo plano no ícone da bandeja do Windows).*
+
+**Opção B: Google Gemini (Online, Maior Qualidade)**
+Se você possui uma chave de API do Google Gemini, você pode configurá-la no sistema para gerar resumos mais potentes:
+```bash
+python main.py --set-gemini-key "SUA_CHAVE_AQUI"
+```
+*(A chave será salva de forma persistente em um arquivo `config.json` local).*
 
 ---
 
@@ -66,10 +74,12 @@ python main.py --mic-index 1 --sys-index 28
 ```
 
 ### Argumentos Opcionais Avançados
+- `--provider` (Qual motor de Inteligência Artificial usar para o resumo: `ollama` ou `gemini`. Padrão: `ollama`):
+  `python main.py --provider gemini`
 - `--list-llms` (Lista todos os modelos LLM instalados no Ollama e sai).
-- `--llm` (O modelo do Ollama para gerar o resumo. Padrão: `llama3.2:1b`):
+- `--llm` (O modelo para gerar o resumo. Padrão: `llama3.2:1b` para Ollama ou `gemini-2.5-flash` para Gemini):
   `python main.py --llm phi3.5:latest`
-- `--model` (Tamanho do modelo. Padrão: `small`):
+- `--model` (Tamanho do modelo de transcrição Whisper. Padrão: `small`):
   `python main.py --model base` *(Aviso: Modelos como `medium` ou superiores exigem mais de 4GB de VRAM).*
 - `--chunk` (Tamanho da gravação em segundos enviada pra IA por vez. Padrão: `10.0`).
 - `--overlap` (Sobreposição de segurança para não cortar palavras pela metade. Padrão: `2.0`).

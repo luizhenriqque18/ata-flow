@@ -30,8 +30,10 @@ def parse_args():
     parser.add_argument("--list-devices", action="store_true", help="Lista os dispositivos de áudio disponíveis e sai")
     parser.add_argument("--mic-index", type=int, default=None, help="Índice do microfone a ser capturado")
     parser.add_argument("--sys-index", type=int, default=None, help="Índice do loopback de áudio do sistema")
-    parser.add_argument("--llm", type=str, default="llama3.2:1b", help="Modelo LLM do Ollama para gerar o resumo (default: llama3.2:1b)")
+    parser.add_argument("--llm", type=str, default="llama3.2:1b", help="Modelo LLM do Ollama/Gemini para gerar o resumo")
     parser.add_argument("--list-llms", action="store_true", help="Lista os modelos LLM instalados no Ollama e sai")
+    parser.add_argument("--set-gemini-key", type=str, default=None, help="Salva a chave de API do Gemini no config.json")
+    parser.add_argument("--provider", type=str, choices=["ollama", "gemini"], default="ollama", help="Qual IA usar para o resumo (default: ollama)")
     return parser.parse_args()
 
 class AppCLI:
@@ -106,11 +108,11 @@ class AppCLI:
         console.print(f"[bold green]Sessão de transcrição encerrada. Arquivo bruto salvo em:[/] {self.session.output_file}")
         
         # Etapa de Resumo Local
-        from summarizer import LocalSummarizer
-        summarizer = LocalSummarizer(model_name=self.args.llm)
+        from summarizer import SummarizerFactory
+        summarizer = SummarizerFactory.get_summarizer(provider=self.args.provider, model_name=self.args.llm)
         
         if summarizer.is_available():
-            console.print(Panel("[bold cyan]🤖 Gerando Resumo Inteligente com Ollama...[/]\nIsso pode levar alguns minutos dependendo do tamanho da reunião.", expand=False))
+            console.print(Panel(f"[bold cyan]🤖 Gerando Resumo Inteligente com {self.args.provider.upper()}...[/]\nIsso pode levar alguns minutos dependendo do tamanho da reunião.", expand=False))
             
             try:
                 with open(self.session.output_file, "r", encoding="utf-8") as f:
@@ -131,11 +133,19 @@ class AppCLI:
 if __name__ == "__main__":
     args = parse_args()
     
+    if args.set_gemini_key:
+        from config import set_gemini_key
+        if set_gemini_key(args.set_gemini_key):
+            console.print("[bold green]Chave de API do Gemini salva com sucesso em config.json![/]")
+        else:
+            console.print("[bold red]Erro ao tentar salvar a chave do Gemini.[/]")
+        sys.exit(0)
+        
     if args.list_llms:
-        from summarizer import LocalSummarizer
+        from summarizer import OllamaSummarizer
         from rich.table import Table
         
-        models = LocalSummarizer.get_available_models()
+        models = OllamaSummarizer.get_available_models()
         if not models:
             console.print("[bold red]Ollama não encontrado ou nenhum modelo instalado. Verifique se o serviço está rodando.[/]")
         else:
