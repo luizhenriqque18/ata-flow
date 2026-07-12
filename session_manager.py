@@ -36,7 +36,7 @@ class SessionManager:
         
         self.session_events = Queue()
 
-    def start(self):
+    def start(self, mic_index=None, sys_index=None):
         logger.info("Inicializando sessão...")
         if not self.transcriber.load_model():
             logger.error("Falha ao carregar modelo. Sessão não iniciada.")
@@ -45,7 +45,7 @@ class SessionManager:
         self.running = True
         self.global_start_time = time.time()
         
-        self.audio_capture.start()
+        self.audio_capture.start(mic_index=mic_index, sys_index=sys_index)
         
         self.producer_thread = threading.Thread(target=self._producer_loop, daemon=True)
         self.consumer_thread = threading.Thread(target=self._consumer_loop, daemon=True)

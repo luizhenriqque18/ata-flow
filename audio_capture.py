@@ -67,11 +67,39 @@ class AudioCapture:
             self.sys_queue.put(audio_data)
         return (in_data, pyaudio.paContinue)
 
-    def start(self):
+    @staticmethod
+    def list_devices():
+        p = pyaudio.PyAudio()
+        mics = []
+        loopbacks = []
+        
+        try:
+            for i in range(p.get_device_count()):
+                dev = p.get_device_info_by_index(i)
+                if dev.get("maxInputChannels", 0) > 0:
+                    # Verifica se é um dispositivo de loopback da API WASAPI
+                    if dev.get("isLoopbackDevice", False):
+                        loopbacks.append(dev)
+                    else:
+                        mics.append(dev)
+        except Exception as e:
+            logger.error(f"Erro ao listar dispositivos: {e}")
+            
+        p.terminate()
+        return {"mics": mics, "loopbacks": loopbacks}
+
+    def start(self, mic_index=None, sys_index=None):
         self.running = True
         
-        mic_info = self.get_default_mic()
-        sys_info = self.get_wasapi_loopback()
+        if mic_index is not None:
+            mic_info = self.p.get_device_info_by_index(mic_index)
+        else:
+            mic_info = self.get_default_mic()
+            
+        if sys_index is not None:
+            sys_info = self.p.get_device_info_by_index(sys_index)
+        else:
+            sys_info = self.get_wasapi_loopback()
         
         if mic_info:
             try:
