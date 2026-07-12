@@ -1,6 +1,28 @@
 import sys
+import os
+import site
 import logging
 from unittest.mock import MagicMock
+
+# Injetar os diretórios do nvidia-cublas e cudnn (instalados via pip) no PATH do Windows
+try:
+    paths_to_add = []
+    for site_pkg in site.getsitepackages():
+        # Caminhos do nvidia-cublas e nvidia-cudnn
+        for pkg in ["cublas", "cudnn"]:
+            bin_path = os.path.join(site_pkg, "nvidia", pkg, "bin")
+            if os.path.exists(bin_path):
+                paths_to_add.append(bin_path)
+        # Caminho do torch caso tenham instalado via pytorch
+        torch_lib = os.path.join(site_pkg, "torch", "lib")
+        if os.path.exists(torch_lib):
+            paths_to_add.append(torch_lib)
+            
+    for p in paths_to_add:
+        if p not in os.environ["PATH"]:
+            os.environ["PATH"] = p + os.pathsep + os.environ["PATH"]
+except Exception:
+    pass
 
 # Workaround para Política de Controle de Aplicativo (Windows) que bloqueia a DLL do PyAV.
 # Como passamos um numpy array diretamente pro modelo, não precisamos do 'av' para decodificar arquivos.
