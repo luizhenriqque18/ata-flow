@@ -24,7 +24,7 @@ console = Console()
 def parse_args():
     from config import get_default
     default_provider = get_default("provider", "ollama")
-    default_llm = get_default(f"llm_{default_provider}", "llama3.2:1b" if default_provider == "ollama" else "gemini-2.0-flash")
+    default_llm = get_default(f"llm_{default_provider}", "llama3.2:1b" if default_provider == "ollama" else "gemini-3.5-flash")
 
     parser = argparse.ArgumentParser(description="Transcritor Local CLI (Microfone + WASAPI)")
     parser.add_argument("--model", type=str, default="small", help="Tamanho do modelo whisper (default: small)")
