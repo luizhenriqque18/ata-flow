@@ -33,3 +33,12 @@ def set_gemini_key(api_key):
     config = load_config()
     config["gemini_api_key"] = api_key
     return save_config(config)
+
+def get_default(key, default_value=None):
+    config = load_config()
+    return config.get(key, default_value)
+
+def set_default(key, value):
+    config = load_config()
+    config[key] = value
+    return save_config(config)

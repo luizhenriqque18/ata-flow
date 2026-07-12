@@ -106,6 +106,22 @@ class GeminiSummarizer:
     def is_available(self):
         return bool(self.api_key)
 
+    @staticmethod
+    def get_available_models():
+        api_key = get_gemini_key()
+        if not api_key:
+            return []
+        try:
+            req = urllib.request.Request(f"https://generativelanguage.googleapis.com/v1beta/models?key={api_key}", method="GET")
+            with urllib.request.urlopen(req, timeout=5.0) as response:
+                if response.status == 200:
+                    data = json.loads(response.read().decode('utf-8'))
+                    return [m.get("name").replace("models/", "") for m in data.get("models", []) if "generateContent" in m.get("supportedGenerationMethods", [])]
+                return []
+        except Exception as e:
+            logger.error(f"Erro ao buscar modelos do Gemini: {e}")
+            return []
+
     def summarize(self, text):
         if not text.strip():
             return "Nenhuma transcrição foi gerada para resumir."

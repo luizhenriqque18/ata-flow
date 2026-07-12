@@ -73,11 +73,22 @@ Inicie a transcrição passando os índices que você anotou. (Se você não pas
 python main.py --mic-index 1 --sys-index 28
 ```
 
+### Salvar Preferências de Inteligência Artificial
+Se você quiser deixar a sua escolha salva, em vez de passar os argumentos `--provider` ou `--llm` toda vez, você pode rodar os seguintes comandos para salvar sua preferência (ficam gravadas no `config.json`):
+
+```bash
+# Define o Gemini como motor padrão
+python main.py --set-default-provider gemini
+
+# Verifica a lista de LLMs e define um modelo padrão
+python main.py --provider gemini --list-llms
+python main.py --provider gemini --set-default-llm gemini-2.5-pro
+```
+
 ### Argumentos Opcionais Avançados
-- `--provider` (Qual motor de Inteligência Artificial usar para o resumo: `ollama` ou `gemini`. Padrão: `ollama`):
-  `python main.py --provider gemini`
-- `--list-llms` (Lista todos os modelos LLM instalados no Ollama e sai).
-- `--llm` (O modelo para gerar o resumo. Padrão: `llama3.2:1b` para Ollama ou `gemini-2.5-flash` para Gemini):
+- `--provider` (Qual motor de Inteligência Artificial usar para o resumo: `ollama` ou `gemini`. Padrão salvo no `config.json`).
+- `--list-llms` (Lista todos os modelos LLM disponíveis baseados no provedor atual e sai).
+- `--llm` (O modelo de inteligência. Padrão salvo no `config.json` para cada provedor):
   `python main.py --llm phi3.5:latest`
 - `--model` (Tamanho do modelo de transcrição Whisper. Padrão: `small`):
   `python main.py --model base` *(Aviso: Modelos como `medium` ou superiores exigem mais de 4GB de VRAM).*
