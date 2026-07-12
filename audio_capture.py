@@ -52,6 +52,18 @@ class AudioCapture:
     def _sys_callback(self, in_data, frame_count, time_info, status):
         if in_data and self.running:
             audio_data = np.frombuffer(in_data, dtype=np.float32)
+            
+            # Downmix para mono se for estéreo
+            if hasattr(self, 'sys_channels') and self.sys_channels > 1:
+                audio_data = audio_data.reshape(-1, self.sys_channels).mean(axis=1)
+                
+            # Resample linear para a taxa do microfone (ex: 48000 -> 16000)
+            if hasattr(self, 'sys_rate') and self.sys_rate != self.sample_rate:
+                num_samples = int(len(audio_data) * self.sample_rate / self.sys_rate)
+                xp = np.arange(len(audio_data))
+                xq = np.linspace(0, len(audio_data) - 1, num=num_samples)
+                audio_data = np.interp(xq, xp, audio_data).astype(np.float32)
+                
             self.sys_queue.put(audio_data)
         return (in_data, pyaudio.paContinue)
 
@@ -79,13 +91,13 @@ class AudioCapture:
         if sys_info:
             try:
                 self.sys_channels = sys_info["maxInputChannels"]
-                sys_rate = int(sys_info["defaultSampleRate"])
+                self.sys_rate = int(sys_info["defaultSampleRate"])
                 
                 # PyAudioWPatch loopback mode
                 self.sys_stream = self.p.open(
                     format=pyaudio.paFloat32,
                     channels=self.sys_channels,
-                    rate=sys_rate,
+                    rate=self.sys_rate,
                     input=True,
                     input_device_index=sys_info["index"],
                     stream_callback=self._sys_callback
