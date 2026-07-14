@@ -118,7 +118,16 @@ class AppCLI:
         summarizer = SummarizerFactory.get_summarizer(provider=self.args.provider, model_name=self.args.llm)
         
         if summarizer.is_available():
-            console.print(Panel(f"[bold cyan]🤖 Gerando Resumo Inteligente com {self.args.provider.upper()}...[/]\nIsso pode levar alguns minutos dependendo do tamanho da reunião.", expand=False))
+            if self.args.provider == "gemini":
+                console.print(Panel("[bold cyan][...] Verificando integridade da API Gemini (HealthCheck)...[/]"))
+                ok, stable_model = summarizer.verify_and_fallback()
+                if not ok:
+                    console.print("[bold red]Nenhum modelo Gemini estavel encontrado no momento.[/]")
+                elif stable_model != self.args.llm:
+                    console.print(f"[bold yellow][!] O modelo {self.args.llm} falhou no HealthCheck. Failover automatico para {stable_model} realizado.[/]")
+                self.args.llm = stable_model
+                
+            console.print(Panel(f"[bold cyan][OK] Gerando Resumo Inteligente com {self.args.provider.upper()} ({self.args.llm})...[/]\nIsso pode levar alguns minutos dependendo do tamanho da reuniao.", expand=False))
             
             try:
                 with open(self.session.output_file, "r", encoding="utf-8") as f:
@@ -163,7 +172,8 @@ if __name__ == "__main__":
         from rich.table import Table
         if args.provider == "gemini":
             from summarizer import GeminiSummarizer
-            models = GeminiSummarizer.get_available_models()
+            console.print("[bold cyan][...] Executando HealthCheck nos modelos do Gemini (isso levara alguns segundos)...[/]")
+            models = GeminiSummarizer.get_available_models(health_check=True)
             provider_name = "Gemini"
         else:
             from summarizer import OllamaSummarizer
@@ -175,9 +185,15 @@ if __name__ == "__main__":
         else:
             console.print(f"\n[bold cyan]Modelos LLM disponíveis ({provider_name})[/]")
             t_llms = Table(show_header=True, header_style="bold magenta")
-            t_llms.add_column("Nome do Modelo")
-            for m in models:
-                t_llms.add_row(m)
+            if provider_name == "Gemini":
+                t_llms.add_column("Nome do Modelo")
+                t_llms.add_column("Status de Saúde (HealthCheck)")
+                for m in models:
+                    t_llms.add_row(m["name"], m["status"])
+            else:
+                t_llms.add_column("Nome do Modelo")
+                for m in models:
+                    t_llms.add_row(m)
             console.print(t_llms)
             console.print("\nPara salvar um modelo como padrão, use:")
             console.print(f"[bold yellow]python main.py --provider {args.provider} --set-default-llm <Nome>[/]")

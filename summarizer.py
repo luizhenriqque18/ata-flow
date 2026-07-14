@@ -2,6 +2,7 @@ import json
 import logging
 import urllib.request
 import urllib.error
+import concurrent.futures
 from config import get_gemini_key
 
 logger = logging.getLogger(__name__)
@@ -107,7 +108,7 @@ class GeminiSummarizer:
         return bool(self.api_key)
 
     @staticmethod
-    def get_available_models():
+    def get_available_models(health_check=False):
         api_key = get_gemini_key()
         if not api_key:
             return []
@@ -116,11 +117,82 @@ class GeminiSummarizer:
             with urllib.request.urlopen(req, timeout=5.0) as response:
                 if response.status == 200:
                     data = json.loads(response.read().decode('utf-8'))
-                    return [m.get("name").replace("models/", "") for m in data.get("models", []) if "generateContent" in m.get("supportedGenerationMethods", [])]
+                    models = [m.get("name").replace("models/", "") for m in data.get("models", []) if "generateContent" in m.get("supportedGenerationMethods", [])]
+                    
+                    if health_check:
+                        # Filter to standard textual models to avoid rate limiting
+                        test_models = [m for m in models if "flash" in m or "pro" in m or "lite" in m]
+                        statuses = GeminiSummarizer.run_health_check(test_models)
+                        return [{"name": m, "status": statuses.get(m, "[?] Desconhecido")} for m in test_models]
+                    return models
                 return []
         except Exception as e:
             logger.error(f"Erro ao buscar modelos do Gemini: {e}")
             return []
+
+    @staticmethod
+    def ping_model(model_name):
+        """Dispara um micro-prompt para verificar a saude do modelo."""
+        api_key = get_gemini_key()
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={api_key}"
+        data = {"contents": [{"parts": [{"text": "ping"}]}]}
+        req = urllib.request.Request(url, data=json.dumps(data).encode('utf-8'), headers={'Content-Type': 'application/json'})
+        
+        try:
+            with urllib.request.urlopen(req, timeout=5.0) as response:
+                if response.status == 200:
+                    return model_name, "[OK]"
+        except urllib.error.HTTPError as e:
+            if e.code == 404:
+                return model_name, "[OFF] (404 - Nao Encontrado)"
+            elif e.code == 429:
+                return model_name, "[LIMIT] (429 - Gargalo/Too Many Requests)"
+            elif e.code == 503:
+                return model_name, "[DOWN] (503 - Servico Indisponivel)"
+            else:
+                return model_name, f"[FAIL] (Erro {e.code})"
+        except Exception:
+            return model_name, "[TIMEOUT] (Falha de Conexao)"
+            
+        return model_name, "[FAIL] (Erro Desconhecido)"
+
+    @staticmethod
+    def run_health_check(models):
+        """Testa múltiplos modelos simultaneamente."""
+        results = {}
+        with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
+            futures = [executor.submit(GeminiSummarizer.ping_model, m) for m in models]
+            for future in concurrent.futures.as_completed(futures):
+                model_name, status = future.result()
+                results[model_name] = status
+        return results
+
+    def verify_and_fallback(self):
+        """Testa o modelo atual. Se falhar, busca o próximo modelo flash/lite disponível."""
+        _, status = self.ping_model(self.model_name)
+        if "[OK]" in status:
+            return True, self.model_name
+            
+        logger.warning(f"Modelo {self.model_name} instável ({status}). Iniciando Failover automático...")
+        
+        # Obter modelos (sem health_check detalhado ainda para economizar tempo)
+        all_models = self.get_available_models(health_check=False)
+        fallback_candidates = [m for m in all_models if ("flash" in m or "lite" in m) and m != self.model_name]
+        
+        # Testar apenas os 3 primeiros candidatos para ser ultra rápido
+        candidates = fallback_candidates[:3]
+        if not candidates:
+            return False, self.model_name
+            
+        statuses = self.run_health_check(candidates)
+        for cand in candidates:
+            if "[OK]" in statuses.get(cand, ""):
+                logger.info(f"Failover bem-sucedido: Trocando para {cand}")
+                self.model_name = cand
+                self.api_url = f"https://generativelanguage.googleapis.com/v1beta/models/{self.model_name}:generateContent?key={self.api_key}"
+                return True, cand
+                
+        return False, self.model_name
 
     def summarize(self, text):
         if not text.strip():
