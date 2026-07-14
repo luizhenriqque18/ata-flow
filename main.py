@@ -24,7 +24,6 @@ console = Console()
 def parse_args():
     from config import get_default
     default_provider = get_default("provider", "ollama")
-    default_llm = get_default(f"llm_{default_provider}", "llama3.2:1b" if default_provider == "ollama" else "gemini-3.5-flash")
 
     parser = argparse.ArgumentParser(description="Transcritor Local CLI (Microfone + WASAPI)")
     parser.add_argument("--model", type=str, default="small", help="Tamanho do modelo whisper (default: small)")
@@ -34,13 +33,19 @@ def parse_args():
     parser.add_argument("--list-devices", action="store_true", help="Lista os dispositivos de áudio disponíveis e sai")
     parser.add_argument("--mic-index", type=int, default=None, help="Índice do microfone a ser capturado")
     parser.add_argument("--sys-index", type=int, default=None, help="Índice do loopback de áudio do sistema")
-    parser.add_argument("--llm", type=str, default=default_llm, help=f"Modelo LLM para gerar o resumo (default salvo: {default_llm})")
+    parser.add_argument("--llm", type=str, default=None, help="Modelo LLM para gerar o resumo (se nao passar, usa o padrao salvo do provedor ativo)")
     parser.add_argument("--list-llms", action="store_true", help="Lista os modelos LLM do provedor atual e sai")
     parser.add_argument("--set-gemini-key", type=str, default=None, help="Salva a chave de API do Gemini no config.json")
     parser.add_argument("--provider", type=str, choices=["ollama", "gemini"], default=default_provider, help=f"Qual IA usar para o resumo (default salvo: {default_provider})")
     parser.add_argument("--set-default-provider", type=str, choices=["ollama", "gemini"], default=None, help="Salva o provedor padrao no config.json")
     parser.add_argument("--set-default-llm", type=str, default=None, help="Salva o modelo LLM padrao para o provedor atual no config.json")
-    return parser.parse_args()
+    
+    args = parser.parse_args()
+    
+    if args.llm is None:
+        args.llm = get_default(f"llm_{args.provider}", "llama3.2:1b" if args.provider == "ollama" else "gemini-3.5-flash")
+        
+    return args
 
 class AppCLI:
     def __init__(self, args):
