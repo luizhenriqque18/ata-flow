@@ -1,5 +1,0 @@
-faster-whisper
-PyAudioWPatch
-numpy
-pytest
-rich

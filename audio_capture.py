@@ -1,170 +1,224 @@
+"""
+Captura de audio do microfone e do sistema (WASAPI loopback) no Windows.
+
+Refatoracao em relacao ao original:
+- Filas de saida sao agora asyncio.Queue (thread-safe com loop.call_soon_threadsafe)
+- A API publica permanece a mesma: start() / stop() / list_devices()
+- Sem mudancas no comportamento de downmix e resample
+"""
+from __future__ import annotations
+
+import asyncio
 import logging
-import threading
+
 import numpy as np
 import pyaudiowpatch as pyaudio
-from queue import Queue
 
 logger = logging.getLogger(__name__)
 
+
 class AudioCapture:
-    def __init__(self, sample_rate=16000, mic_volume=1.0, sys_volume=1.0):
+    """
+    Captura audio de microfone e loopback do sistema simultaneamente.
+
+    Cada canal possui uma asyncio.Queue propria que pode ser consumida
+    diretamente pelo event loop do Textual sem polling em thread separada.
+    """
+
+    def __init__(
+        self,
+        sample_rate: int = 16_000,
+        mic_volume: float = 1.0,
+        sys_volume: float = 1.0,
+    ) -> None:
         self.sample_rate = sample_rate
         self.mic_volume = mic_volume
         self.sys_volume = sys_volume
-        
-        self.p = pyaudio.PyAudio()
+
+        self._pa = pyaudio.PyAudio()
         self.running = False
-        
-        # Filas para comunicação entre callbacks e a thread de processamento
-        self.mic_queue = Queue()
-        self.sys_queue = Queue()
-        
-        self.mic_stream = None
-        self.sys_stream = None
-        
-        self.sys_channels = 2
 
-    def get_wasapi_loopback(self):
-        try:
-            wasapi_info = self.p.get_host_api_info_by_type(pyaudio.paWASAPI)
-            default_speakers = self.p.get_device_info_by_index(wasapi_info["defaultOutputDevice"])
-            for loopback in self.p.get_loopback_device_info_generator():
-                if default_speakers["name"] in loopback["name"]:
-                    return loopback
-            return default_speakers
-        except OSError:
-            logger.warning("WASAPI não encontrado. O áudio do sistema não será capturado.")
-            return None
+        # Filas asyncio â€” consumidas pelo SessionManager no event loop
+        self.mic_queue: asyncio.Queue[np.ndarray] = asyncio.Queue()
+        self.sys_queue: asyncio.Queue[np.ndarray] = asyncio.Queue()
 
-    def get_default_mic(self):
-        try:
-            return self.p.get_default_input_device_info()
-        except OSError:
-            logger.warning("Microfone não encontrado.")
-            return None
+        self._mic_stream: object | None = None
+        self._sys_stream: object | None = None
+        self._sys_channels: int = 2
+        self._sys_rate: int = sample_rate
+        self._loop: asyncio.AbstractEventLoop | None = None
 
-    def _mic_callback(self, in_data, frame_count, time_info, status):
-        if in_data and self.running:
-            audio_data = np.frombuffer(in_data, dtype=np.float32)
-            self.mic_queue.put(audio_data)
-        return (in_data, pyaudio.paContinue)
-
-    def _sys_callback(self, in_data, frame_count, time_info, status):
-        if in_data and self.running:
-            audio_data = np.frombuffer(in_data, dtype=np.float32)
-            
-            # Downmix para mono se for estéreo
-            if hasattr(self, 'sys_channels') and self.sys_channels > 1:
-                audio_data = audio_data.reshape(-1, self.sys_channels).mean(axis=1)
-                
-            # Resample linear para a taxa do microfone (ex: 48000 -> 16000)
-            if hasattr(self, 'sys_rate') and self.sys_rate != self.sample_rate:
-                num_samples = int(len(audio_data) * self.sample_rate / self.sys_rate)
-                xp = np.arange(len(audio_data))
-                xq = np.linspace(0, len(audio_data) - 1, num=num_samples)
-                audio_data = np.interp(xq, xp, audio_data).astype(np.float32)
-                
-            self.sys_queue.put(audio_data)
-        return (in_data, pyaudio.paContinue)
+    # ------------------------------------------------------------------
+    # Descoberta de dispositivos
+    # ------------------------------------------------------------------
 
     @staticmethod
-    def list_devices():
-        p = pyaudio.PyAudio()
-        mics = []
-        loopbacks = []
-        
+    def list_devices() -> dict[str, list[dict]]:
+        """Lista microfones e dispositivos de loopback disponiveis."""
+        pa = pyaudio.PyAudio()
+        mics: list[dict] = []
+        loopbacks: list[dict] = []
+
         try:
-            for i in range(p.get_device_count()):
-                dev = p.get_device_info_by_index(i)
+            for i in range(pa.get_device_count()):
+                dev = pa.get_device_info_by_index(i)
                 if dev.get("maxInputChannels", 0) > 0:
-                    # Verifica se é um dispositivo de loopback da API WASAPI
                     if dev.get("isLoopbackDevice", False):
-                        loopbacks.append(dev)
+                        loopbacks.append(dict(dev))
                     else:
-                        mics.append(dev)
-        except Exception as e:
-            logger.error(f"Erro ao listar dispositivos: {e}")
-            
-        p.terminate()
+                        mics.append(dict(dev))
+        except Exception as exc:
+            logger.error(f"Erro ao listar dispositivos: {exc}")
+        finally:
+            pa.terminate()
+
         return {"mics": mics, "loopbacks": loopbacks}
 
-    def start(self, mic_index=None, sys_index=None):
+    def _get_wasapi_loopback(self) -> dict | None:
+        """Retorna o dispositivo de loopback WASAPI do output padrao."""
+        try:
+            wasapi_info = self._pa.get_host_api_info_by_type(pyaudio.paWASAPI)
+            default_speakers = self._pa.get_device_info_by_index(wasapi_info["defaultOutputDevice"])
+            for loopback in self._pa.get_loopback_device_info_generator():
+                if default_speakers["name"] in loopback["name"]:
+                    return dict(loopback)
+            return dict(default_speakers)
+        except OSError:
+            logger.warning("WASAPI nao encontrado. Audio do sistema nao sera capturado.")
+            return None
+
+    def _get_default_mic(self) -> dict | None:
+        """Retorna o microfone padrao do sistema."""
+        try:
+            return dict(self._pa.get_default_input_device_info())
+        except OSError:
+            logger.warning("Microfone nao encontrado.")
+            return None
+
+    # ------------------------------------------------------------------
+    # Callbacks de audio (chamados em threads do PyAudio)
+    # ------------------------------------------------------------------
+
+    def _put_async(self, queue: asyncio.Queue, data: np.ndarray) -> None:
+        """Despacha dado para uma asyncio.Queue de forma thread-safe."""
+        if self._loop and not self._loop.is_closed():
+            try:
+                self._loop.call_soon_threadsafe(queue.put_nowait, data)
+            except asyncio.QueueFull:
+                logger.debug("Fila de audio cheia, descartando chunk.")
+
+    def _mic_callback(self, in_data: bytes, _frame_count: int, _time_info: dict, _status: int) -> tuple:
+        if in_data and self.running:
+            audio = np.frombuffer(in_data, dtype=np.float32)
+            self._put_async(self.mic_queue, audio)
+        return (in_data, pyaudio.paContinue)
+
+    def _sys_callback(self, in_data: bytes, _frame_count: int, _time_info: dict, _status: int) -> tuple:
+        if in_data and self.running:
+            audio = np.frombuffer(in_data, dtype=np.float32)
+
+            if self._sys_channels > 1:
+                audio = audio.reshape(-1, self._sys_channels).mean(axis=1).astype(np.float32)
+
+            if self._sys_rate != self.sample_rate:
+                n = int(len(audio) * self.sample_rate / self._sys_rate)
+                xp = np.arange(len(audio))
+                xq = np.linspace(0, len(audio) - 1, num=n)
+                audio = np.interp(xq, xp, audio).astype(np.float32)
+
+            self._put_async(self.sys_queue, audio)
+        return (in_data, pyaudio.paContinue)
+
+    # ------------------------------------------------------------------
+    # Controle de ciclo de vida
+    # ------------------------------------------------------------------
+
+    def start(self, mic_index: int | None = None, sys_index: int | None = None, loop: "asyncio.AbstractEventLoop | None" = None) -> None:
+        """Inicia a captura de audio. Deve ser chamado com o event loop ativo."""
+        self._loop = loop or asyncio.get_event_loop()
         self.running = True
-        
-        if mic_index is not None:
-            mic_info = self.p.get_device_info_by_index(mic_index)
-        else:
-            mic_info = self.get_default_mic()
-            
-        if sys_index is not None:
-            sys_info = self.p.get_device_info_by_index(sys_index)
-        else:
-            sys_info = self.get_wasapi_loopback()
-        
+
+        mic_info = (
+            self._pa.get_device_info_by_index(mic_index) if mic_index is not None
+            else self._get_default_mic()
+        )
+        sys_info = (
+            self._pa.get_device_info_by_index(sys_index) if sys_index is not None
+            else self._get_wasapi_loopback()
+        )
+
         if mic_info:
             try:
-                self.mic_stream = self.p.open(
+                self._mic_stream = self._pa.open(
                     format=pyaudio.paFloat32,
                     channels=1,
                     rate=self.sample_rate,
                     input=True,
                     input_device_index=mic_info["index"],
-                    stream_callback=self._mic_callback
+                    stream_callback=self._mic_callback,
                 )
-                self.mic_stream.start_stream()
-                logger.info(f"Capturando microfone: {mic_info['name']}")
-            except Exception as e:
-                logger.error(f"Erro ao iniciar microfone: {e}")
-                
+                self._mic_stream.start_stream()
+                logger.info(f"Microfone: {mic_info['name']}")
+            except Exception as exc:
+                logger.error(f"Erro ao iniciar microfone: {exc}")
+
         if sys_info:
             try:
-                self.sys_channels = sys_info["maxInputChannels"]
-                self.sys_rate = int(sys_info["defaultSampleRate"])
-                
-                # PyAudioWPatch loopback mode
-                self.sys_stream = self.p.open(
+                self._sys_channels = sys_info["maxInputChannels"]
+                self._sys_rate = int(sys_info["defaultSampleRate"])
+                self._sys_stream = self._pa.open(
                     format=pyaudio.paFloat32,
-                    channels=self.sys_channels,
-                    rate=self.sys_rate,
+                    channels=self._sys_channels,
+                    rate=self._sys_rate,
                     input=True,
                     input_device_index=sys_info["index"],
-                    stream_callback=self._sys_callback
+                    stream_callback=self._sys_callback,
                 )
-                self.sys_stream.start_stream()
-                logger.info(f"Capturando áudio do sistema: {sys_info['name']}")
-            except Exception as e:
-                logger.error(f"Erro ao iniciar captura do sistema: {e}")
+                self._sys_stream.start_stream()
+                logger.info(f"Audio do sistema: {sys_info['name']}")
+            except Exception as exc:
+                logger.error(f"Erro ao iniciar audio do sistema: {exc}")
 
-    def stop(self):
+    def stop(self) -> None:
+        """Para a captura e libera todos os recursos do PyAudio."""
         self.running = False
-        if self.mic_stream:
-            self.mic_stream.stop_stream()
-            self.mic_stream.close()
-        if self.sys_stream:
-            self.sys_stream.stop_stream()
-            self.sys_stream.close()
-        self.p.terminate()
+        for stream in (self._mic_stream, self._sys_stream):
+            if stream:
+                try:
+                    stream.stop_stream()
+                    stream.close()
+                except Exception:
+                    pass
+        try:
+            self._pa.terminate()
+        except Exception:
+            pass
+
+    # ------------------------------------------------------------------
+    # Utilitario de mixagem
+    # ------------------------------------------------------------------
 
     @staticmethod
-    def mix_and_normalize(mic_data, sys_data, mic_vol=1.0, sys_vol=1.0):
+    def mix_and_normalize(
+        mic_data: np.ndarray,
+        sys_data: np.ndarray,
+        mic_vol: float = 1.0,
+        sys_vol: float = 1.0,
+    ) -> np.ndarray:
         """
-        Mistura as amostras do microfone e do sistema e normaliza se passar de 1.0 ou -1.0.
-        Garante que ambos tenham o mesmo tamanho preenchendo com zeros.
+        Mistura mic e sistema, normaliza para evitar clipping.
+
+        Preenche com zeros o canal mais curto antes de somar.
         """
         max_len = max(len(mic_data), len(sys_data))
-        
-        mic_padded = np.zeros(max_len, dtype=np.float32)
-        sys_padded = np.zeros(max_len, dtype=np.float32)
-        
-        mic_padded[:len(mic_data)] = mic_data * mic_vol
-        sys_padded[:len(sys_data)] = sys_data * sys_vol
-        
-        mixed = mic_padded + sys_padded
-        
-        # Normalização de pico para evitar clipping
+        mic_p = np.zeros(max_len, dtype=np.float32)
+        sys_p = np.zeros(max_len, dtype=np.float32)
+        mic_p[: len(mic_data)] = mic_data * mic_vol
+        sys_p[: len(sys_data)] = sys_data * sys_vol
+
+        mixed = mic_p + sys_p
         peak = np.max(np.abs(mixed))
         if peak > 1.0:
-            mixed = mixed / peak
-            
-        return mixed
+            mixed /= peak
 
+        return mixed

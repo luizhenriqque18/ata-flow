@@ -1,251 +1,233 @@
-import json
+﻿"""
+Geradores de resumo LLM para transcricoes de reunioes.
+
+Refatoracao em relacao ao original:
+- Substituicao de urllib.request (bloqueante) por httpx.AsyncClient (async)
+- Configuracao via variavel de ambiente (GEMINI_API_KEY) em vez de config.json
+- Failover automatico mantido, mas totalmente asyncio-compativel
+- SummarizerFactory permanece com a mesma interface publica
+"""
+from __future__ import annotations
+
 import logging
-import urllib.request
-import urllib.error
-import concurrent.futures
-from config import get_gemini_key
+import os
+
+import httpx
+from dotenv import load_dotenv
+
+load_dotenv()
 
 logger = logging.getLogger(__name__)
 
-class OllamaSummarizer:
-    def __init__(self, model_name="llama3.2:1b", api_url="http://localhost:11434/api/generate"):
-        self.model_name = model_name
-        self.api_url = api_url
+_OLLAMA_BASE = "http://localhost:11434"
+_GEMINI_BASE = "https://generativelanguage.googleapis.com/v1beta"
 
-    def is_available(self):
+_MEETING_PROMPT_TEMPLATE = """\
+Voce e um assistente especialista em criar atas de reunioes corporativas.
+Analise a transcricao bruta abaixo e produza um resumo profissional em Markdown.
+
+Use linguagem formal, objetiva e concisa. Evite repeticoes.
+A transcricao pode conter erros de reconhecimento de voz — interprete com bom senso.
+
+Siga EXATAMENTE esta estrutura:
+
+# Ata da Reuniao
+
+## Resumo Geral
+(Um paragrafo resumindo o contexto e objetivo principal)
+
+## Principais Pontos Discutidos
+- (Topico 1)
+
+## Decisoes Tomadas
+- (Decisao 1)
+
+## Tarefas e Proximos Passos
+- [Responsavel] — [Tarefa] — [Prazo, se mencionado]
+
+## Questoes Pendentes
+- (Duvidas sem resolucao)
+
+REGRA: Responda SOMENTE em Portugues do Brasil.
+REGRA: Nao invente nomes, prazos ou tarefas que nao estejam na transcricao.
+REGRA: Se uma secao nao tiver informacao, escreva "Nenhum item identificado."
+REGRA: Nao adicione texto fora da estrutura acima.
+
+--- TRANSCRICAO ---
+{text}
+"""
+
+
+def _build_prompt(text: str) -> str:
+    return _MEETING_PROMPT_TEMPLATE.format(text=text)
+
+
+# ======================================================================
+# Ollama
+# ======================================================================
+
+class OllamaSummarizer:
+    """Gera resumos usando um modelo Ollama rodando localmente."""
+
+    def __init__(self, model_name: str = "llama3.2:1b") -> None:
+        self.model_name = model_name
+
+    async def is_available(self) -> bool:
         try:
-            req = urllib.request.Request("http://localhost:11434/api/tags", method="GET")
-            with urllib.request.urlopen(req, timeout=2.0) as response:
-                return response.status == 200
+            async with httpx.AsyncClient(timeout=2.0) as client:
+                r = await client.get(f"{_OLLAMA_BASE}/api/tags")
+                return r.status_code == 200
         except Exception:
             return False
 
     @staticmethod
-    def get_available_models():
+    async def get_available_models() -> list[str]:
         try:
-            req = urllib.request.Request("http://localhost:11434/api/tags", method="GET")
-            with urllib.request.urlopen(req, timeout=2.0) as response:
-                if response.status == 200:
-                    data = json.loads(response.read().decode('utf-8'))
-                    return [m.get("name") for m in data.get("models", [])]
-                return []
+            async with httpx.AsyncClient(timeout=2.0) as client:
+                r = await client.get(f"{_OLLAMA_BASE}/api/tags")
+                if r.status_code == 200:
+                    return [m.get("name") for m in r.json().get("models", [])]
         except Exception:
-            return []
+            pass
+        return []
 
-    def summarize(self, text):
+    async def summarize(self, text: str) -> str:
         if not text.strip():
-            return "Nenhuma transcrição foi gerada para resumir."
-            
-        prompt = self._get_prompt(text)
-        
-        data = {
-            "model": self.model_name,
-            "prompt": prompt,
-            "stream": False
-        }
-        
-        req = urllib.request.Request(
-            self.api_url, 
-            data=json.dumps(data).encode('utf-8'),
-            headers={'Content-Type': 'application/json'}
-        )
-        
+            return "Nenhuma transcricao foi gerada para resumir."
+
+        payload = {"model": self.model_name, "prompt": _build_prompt(text), "stream": False}
         try:
-            logger.info("Enviando transcrição para o Ollama (isso pode levar alguns segundos)...")
-            with urllib.request.urlopen(req, timeout=120.0) as response:
-                if response.status == 200:
-                    result = json.loads(response.read().decode('utf-8'))
-                    return result.get("response", "Erro: Resposta vazia da IA.")
-                else:
-                    return f"Erro na API do Ollama: {response.status}"
-        except Exception as e:
-            logger.error(f"Erro ao chamar Ollama: {e}")
-            return f"Erro interno ao tentar gerar o resumo: {e}"
+            async with httpx.AsyncClient(timeout=120.0) as client:
+                logger.info("Enviando transcricao para o Ollama...")
+                r = await client.post(f"{_OLLAMA_BASE}/api/generate", json=payload)
+                r.raise_for_status()
+                return r.json().get("response", "Erro: Resposta vazia da IA.")
+        except httpx.HTTPStatusError as exc:
+            logger.error(f"Erro HTTP Ollama: {exc}")
+            return f"Erro na API do Ollama: {exc.response.status_code}"
+        except Exception as exc:
+            logger.error(f"Erro ao chamar Ollama: {exc}")
+            return f"Erro interno ao gerar o resumo: {exc}"
 
-    def _get_prompt(self, text):
-        return f"""Você é um assistente especialista em criar atas de reuniões corporativas.
-Sua tarefa é analisar a transcrição bruta da reunião abaixo e produzir um resumo profissional em formato Markdown.
 
-Use linguagem formal, objetiva e concisa. Evite repetições e paráfrases longas.
-A transcrição pode conter erros de reconhecimento de voz — interprete com bom senso, mas não corrija nomes próprios sem certeza.
-
-Siga EXATAMENTE esta estrutura:
-
-# Ata da Reunião
-
-## 📝 Resumo Geral
-(Um parágrafo resumindo o contexto e objetivo principal da reunião)
-
-## 📌 Principais Pontos Discutidos
-- (Tópico 1)
-- (Tópico 2)
-
-## 🎯 Decisões Tomadas
-- (Decisão 1)
-
-## 🛠️ Tarefas e Próximos Passos
-- [Responsável] — [Tarefa] — [Prazo, se mencionado]
-
-## ❓ Questões Pendentes ou Incertezas
-- (Dúvidas ou pontos que ficaram sem resolução)
-
-REGRA: Responda SOMENTE em Português do Brasil.
-REGRA: Não invente nomes, prazos ou tarefas que não estejam explicitamente na transcrição.
-REGRA: Se uma seção não tiver informação relevante, escreva "Nenhum item identificado."
-REGRA: Não adicione comentários, explicações ou texto fora da estrutura acima.
-
---- TRANSCRIÇÃO ---
-{text}
-"""
+# ======================================================================
+# Gemini
+# ======================================================================
 
 class GeminiSummarizer:
-    def __init__(self, model_name="gemini-3.5-flash"):
-        self.model_name = model_name
-        self.api_key = get_gemini_key()
-        self.api_url = f"https://generativelanguage.googleapis.com/v1beta/models/{self.model_name}:generateContent?key={self.api_key}"
+    """Gera resumos usando a API do Google Gemini."""
 
-    def is_available(self):
+    def __init__(self, model_name: str = "gemini-2.5-flash") -> None:
+        self.model_name = model_name
+        self.api_key: str = os.environ.get("GEMINI_API_KEY", "")
+
+    def is_available(self) -> bool:
         return bool(self.api_key)
 
+    def _url(self, model: str | None = None) -> str:
+        m = model or self.model_name
+        return f"{_GEMINI_BASE}/models/{m}:generateContent?key={self.api_key}"
+
     @staticmethod
-    def get_available_models(health_check=False):
-        api_key = get_gemini_key()
+    async def get_available_models(health_check: bool = False) -> list[str] | list[dict]:
+        api_key = os.environ.get("GEMINI_API_KEY", "")
         if not api_key:
             return []
         try:
-            req = urllib.request.Request(f"https://generativelanguage.googleapis.com/v1beta/models?key={api_key}", method="GET")
-            with urllib.request.urlopen(req, timeout=5.0) as response:
-                if response.status == 200:
-                    data = json.loads(response.read().decode('utf-8'))
-                    models = [m.get("name").replace("models/", "") for m in data.get("models", []) if "generateContent" in m.get("supportedGenerationMethods", [])]
-                    
-                    if health_check:
-                        # Filter to standard textual models to avoid rate limiting
-                        test_models = [m for m in models if "flash" in m or "pro" in m or "lite" in m]
-                        statuses = GeminiSummarizer.run_health_check(test_models)
-                        return [{"name": m, "status": statuses.get(m, "[?] Desconhecido")} for m in test_models]
+            async with httpx.AsyncClient(timeout=5.0) as client:
+                r = await client.get(f"{_GEMINI_BASE}/models?key={api_key}")
+                r.raise_for_status()
+                data = r.json()
+                models = [
+                    m["name"].replace("models/", "")
+                    for m in data.get("models", [])
+                    if "generateContent" in m.get("supportedGenerationMethods", [])
+                ]
+
+                if not health_check:
                     return models
-                return []
-        except Exception as e:
-            logger.error(f"Erro ao buscar modelos do Gemini: {e}")
+
+                # Health check paralelo nos modelos flash/lite
+                candidates = [m for m in models if "flash" in m or "pro" in m or "lite" in m]
+                statuses = await GeminiSummarizer._run_health_check(candidates, api_key)
+                return [{"name": m, "status": statuses.get(m, "[?]")} for m in candidates]
+        except Exception as exc:
+            logger.error(f"Erro ao buscar modelos Gemini: {exc}")
             return []
 
     @staticmethod
-    def ping_model(model_name):
-        """Dispara um micro-prompt para verificar a saude do modelo."""
-        api_key = get_gemini_key()
-        url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={api_key}"
-        data = {"contents": [{"parts": [{"text": "ping"}]}]}
-        req = urllib.request.Request(url, data=json.dumps(data).encode('utf-8'), headers={'Content-Type': 'application/json'})
-        
+    async def _ping_model(client: httpx.AsyncClient, model: str, api_key: str) -> tuple[str, str]:
+        url = f"{_GEMINI_BASE}/models/{model}:generateContent?key={api_key}"
+        payload = {"contents": [{"parts": [{"text": "ping"}]}]}
         try:
-            with urllib.request.urlopen(req, timeout=5.0) as response:
-                if response.status == 200:
-                    return model_name, "[OK]"
-        except urllib.error.HTTPError as e:
-            if e.code == 404:
-                return model_name, "[OFF] (404 - Nao Encontrado)"
-            elif e.code == 429:
-                return model_name, "[LIMIT] (429 - Gargalo/Too Many Requests)"
-            elif e.code == 503:
-                return model_name, "[DOWN] (503 - Servico Indisponivel)"
-            else:
-                return model_name, f"[FAIL] (Erro {e.code})"
+            r = await client.post(url, json=payload)
+            if r.status_code == 200:
+                return model, "[OK]"
+            return model, f"[FAIL] ({r.status_code})"
         except Exception:
-            return model_name, "[TIMEOUT] (Falha de Conexao)"
-            
-        return model_name, "[FAIL] (Erro Desconhecido)"
+            return model, "[TIMEOUT]"
 
     @staticmethod
-    def run_health_check(models):
-        """Testa múltiplos modelos simultaneamente."""
-        results = {}
-        with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
-            futures = [executor.submit(GeminiSummarizer.ping_model, m) for m in models]
-            for future in concurrent.futures.as_completed(futures):
-                model_name, status = future.result()
-                results[model_name] = status
-        return results
+    async def _run_health_check(models: list[str], api_key: str) -> dict[str, str]:
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            tasks = [GeminiSummarizer._ping_model(client, m, api_key) for m in models]
+            import asyncio
+            results = await asyncio.gather(*tasks, return_exceptions=True)
+        return {m: s for r in results if isinstance(r, tuple) for m, s in [r]}
 
-    def verify_and_fallback(self):
-        """Testa o modelo atual. Se falhar, busca o próximo modelo flash/lite disponível."""
-        _, status = self.ping_model(self.model_name)
+    async def verify_and_fallback(self) -> tuple[bool, str]:
+        """Testa o modelo atual; faz failover para o proximo flash/lite se falhar."""
+        api_key = self.api_key
+        _, status = await self._ping_model(httpx.AsyncClient(timeout=5.0), self.model_name, api_key)
         if "[OK]" in status:
             return True, self.model_name
-            
-        logger.warning(f"Modelo {self.model_name} instável ({status}). Iniciando Failover automático...")
-        
-        # Obter modelos (sem health_check detalhado ainda para economizar tempo)
-        all_models = self.get_available_models(health_check=False)
-        fallback_candidates = [m for m in all_models if ("flash" in m or "lite" in m) and m != self.model_name]
-        
-        # Testar apenas os 3 primeiros candidatos para ser ultra rápido
-        candidates = fallback_candidates[:3]
+
+        logger.warning(f"Modelo {self.model_name} instavel ({status}). Iniciando failover...")
+        all_models = await self.get_available_models(health_check=False)
+        candidates = [m for m in all_models if ("flash" in m or "lite" in m) and m != self.model_name][:3]
         if not candidates:
             return False, self.model_name
-            
-        statuses = self.run_health_check(candidates)
+
+        statuses = await self._run_health_check(candidates, api_key)
         for cand in candidates:
             if "[OK]" in statuses.get(cand, ""):
-                logger.info(f"Failover bem-sucedido: Trocando para {cand}")
                 self.model_name = cand
-                self.api_url = f"https://generativelanguage.googleapis.com/v1beta/models/{self.model_name}:generateContent?key={self.api_key}"
                 return True, cand
-                
+
         return False, self.model_name
 
-    def summarize(self, text):
+    async def summarize(self, text: str) -> str:
         if not text.strip():
-            return "Nenhuma transcrição foi gerada para resumir."
-            
+            return "Nenhuma transcricao foi gerada para resumir."
         if not self.is_available():
-            return "Erro: Chave da API do Gemini não configurada. Use --set-gemini-key para configurar."
-            
-        prompt = OllamaSummarizer()._get_prompt(text)
-        
-        data = {
-            "contents": [{
-                "parts": [{"text": prompt}]
-            }]
-        }
-        
-        req = urllib.request.Request(
-            self.api_url, 
-            data=json.dumps(data).encode('utf-8'),
-            headers={'Content-Type': 'application/json'}
-        )
-        
+            return "Erro: GEMINI_API_KEY nao configurada. Adicione ao arquivo .env."
+
+        payload = {"contents": [{"parts": [{"text": _build_prompt(text)}]}]}
         try:
-            logger.info(f"Enviando transcrição para o Gemini ({self.model_name})...")
-            with urllib.request.urlopen(req, timeout=120.0) as response:
-                if response.status == 200:
-                    result = json.loads(response.read().decode('utf-8'))
-                    try:
-                        return result["candidates"][0]["content"]["parts"][0]["text"]
-                    except (KeyError, IndexError):
-                        return "Erro: Resposta inesperada do Gemini."
-                else:
-                    return f"Erro na API do Gemini: {response.status}"
-        except urllib.error.HTTPError as e:
-             logger.error(f"Erro HTTP do Gemini: {e.code} - {e.reason}")
-             try:
-                 err_body = e.read().decode('utf-8')
-                 logger.error(f"Detalhes do erro: {err_body}")
-             except:
-                 pass
-             return f"Erro na API do Gemini: {e.code}"
-        except Exception as e:
-            logger.error(f"Erro ao chamar Gemini: {e}")
-            return f"Erro interno ao tentar gerar o resumo via Gemini: {e}"
+            async with httpx.AsyncClient(timeout=120.0) as client:
+                logger.info(f"Enviando transcricao para Gemini ({self.model_name})...")
+                r = await client.post(self._url(), json=payload)
+                r.raise_for_status()
+                return r.json()["candidates"][0]["content"]["parts"][0]["text"]
+        except (KeyError, IndexError):
+            return "Erro: Resposta inesperada do Gemini."
+        except httpx.HTTPStatusError as exc:
+            logger.error(f"Erro HTTP Gemini: {exc.response.status_code}")
+            return f"Erro na API do Gemini: {exc.response.status_code}"
+        except Exception as exc:
+            logger.error(f"Erro ao chamar Gemini: {exc}")
+            return f"Erro interno ao gerar resumo via Gemini: {exc}"
+
+
+# ======================================================================
+# Factory
+# ======================================================================
 
 class SummarizerFactory:
     @staticmethod
-    def get_summarizer(provider, model_name=None):
+    def get_summarizer(provider: str, model_name: str | None = None) -> OllamaSummarizer | GeminiSummarizer:
         if provider == "gemini":
-            if model_name is None or model_name == "llama3.2:1b":
-                model_name = "gemini-3.5-flash"
-            return GeminiSummarizer(model_name=model_name)
-        else: # ollama
-            if model_name is None:
-                model_name = "llama3.2:1b"
-            return OllamaSummarizer(model_name=model_name)
+            model = model_name or os.environ.get("GEMINI_DEFAULT_MODEL", "gemini-2.5-flash")
+            return GeminiSummarizer(model_name=model)
+        model = model_name or os.environ.get("OLLAMA_DEFAULT_MODEL", "llama3.2:1b")
+        return OllamaSummarizer(model_name=model)

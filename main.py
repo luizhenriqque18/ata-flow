@@ -1,235 +1,366 @@
-import sys
-import time
-import signal
+"""
+Ponto de entrada do Transcritor Local CLI.
+
+Fluxo de execucao:
+  1. Detecta os dispositivos de audio disponiveis
+  2. Exibe DeviceSetupScreen para o usuario escolher mic e loopback
+  3. Inicia o TranscriberApp com os dispositivos selecionados
+  4. Ao encerrar (Ctrl+C ou Ctrl+S), gera o resumo LLM automaticamente
+"""
+from __future__ import annotations
+
 import argparse
+import asyncio
 import logging
-from queue import Empty
-from rich.console import Console
-from rich.live import Live
-from rich.panel import Panel
-from rich.layout import Layout
+import os
+import sys
 
+from dotenv import load_dotenv
+from textual.app import ComposeResult
+from textual.binding import Binding
+from textual.widgets import Footer, Header, Static
+
+from agy_tui.app import AgyApp
+from agy_tui.components import DeviceSelector, ServiceStatusBar, TranscriptionLog
+from agy_tui.screens import DeviceSelection, DeviceSetupScreen
+from audio_capture import AudioCapture
+from agy_voice.stt import WhisperLocalSTT
 from session_manager import SessionManager
+from summarizer import SummarizerFactory
 
-# Configuração de log para não poluir a tela principal (salvando em arquivo)
+load_dotenv()
+
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-    handlers=[logging.FileHandler("transcriber.log", encoding="utf-8")]
+    handlers=[logging.FileHandler("transcriber.log", encoding="utf-8")],
 )
 logger = logging.getLogger("main")
 
-console = Console()
 
-def parse_args():
-    from config import get_default
-    default_provider = get_default("provider", "ollama")
+# ======================================================================
+# App principal de transcricao
+# ======================================================================
 
-    parser = argparse.ArgumentParser(description="Transcritor Local CLI (Microfone + WASAPI)")
-    parser.add_argument("--model", type=str, default="small", help="Tamanho do modelo whisper (default: small)")
-    parser.add_argument("--chunk", type=float, default=10.0, help="Duração do chunk em segundos (default: 10)")
-    parser.add_argument("--overlap", type=float, default=2.0, help="Sobreposição entre chunks em segundos (default: 2)")
-    parser.add_argument("--lang", type=str, default="pt", help="Idioma para transcrição (default: pt)")
-    parser.add_argument("--list-devices", action="store_true", help="Lista os dispositivos de áudio disponíveis e sai")
-    parser.add_argument("--mic-index", type=int, default=None, help="Índice do microfone a ser capturado")
-    parser.add_argument("--sys-index", type=int, default=None, help="Índice do loopback de áudio do sistema")
-    parser.add_argument("--llm", type=str, default=None, help="Modelo LLM para gerar o resumo (se nao passar, usa o padrao salvo do provedor ativo)")
-    parser.add_argument("--list-llms", action="store_true", help="Lista os modelos LLM do provedor atual e sai")
-    parser.add_argument("--set-gemini-key", type=str, default=None, help="Salva a chave de API do Gemini no config.json")
-    parser.add_argument("--provider", type=str, choices=["ollama", "gemini"], default=default_provider, help=f"Qual IA usar para o resumo (default salvo: {default_provider})")
-    parser.add_argument("--set-default-provider", type=str, choices=["ollama", "gemini"], default=None, help="Salva o provedor padrao no config.json")
-    parser.add_argument("--set-default-llm", type=str, default=None, help="Salva o modelo LLM padrao para o provedor atual no config.json")
-    
-    args = parser.parse_args()
-    
-    if args.llm is None:
-        args.llm = get_default(f"llm_{args.provider}", "llama3.2:1b" if args.provider == "ollama" else "gemini-3.5-flash")
-        
-    return args
+class TranscriberApp(AgyApp):
+    """Aplicacao principal de transcricao de reunioes."""
 
-class AppCLI:
-    def __init__(self, args):
+    TITLE = "Transcritor Local"
+    SUB_TITLE = "Ctrl+S para encerrar e gerar resumo"
+
+    BINDINGS = [
+        *AgyApp.BINDINGS,
+        Binding("ctrl+s", "stop_session", "Encerrar e Resumir", show=True),
+    ]
+
+    def __init__(self, args: argparse.Namespace, selection: DeviceSelection) -> None:
+        super().__init__()
         self.args = args
+        self.selection = selection
+        stt = WhisperLocalSTT(
+            model_size=args.model,
+            language=args.lang,
+        )
         self.session = SessionManager(
             chunk_duration=args.chunk,
-            overlap=args.overlap
+            overlap=args.overlap,
+            stt=stt,
         )
-        self.session.transcriber.model_size = args.model
-        self.session.transcriber.language = args.lang
-        self.running = False
+        self._stopping = False
 
-    def handle_sigint(self, sig, frame):
-        if not self.running:
+    # ------------------------------------------------------------------
+    # Layout
+    # ------------------------------------------------------------------
+
+    def compose(self) -> ComposeResult:
+        yield Header()
+        yield DeviceSelector(id="devices")
+        yield TranscriptionLog(id="log")
+        yield ServiceStatusBar(id="status")
+        yield Footer()
+
+    # ------------------------------------------------------------------
+    # Ciclo de vida
+    # ------------------------------------------------------------------
+
+    async def on_mount(self) -> None:
+        # Exibe dispositivos selecionados no widget
+        devices_widget = self.query_one(DeviceSelector)
+        devices_widget.set_devices(self.selection.mic_name, self.selection.sys_name)
+
+        status = self.query_one(ServiceStatusBar)
+        status.update_whisper("carregando")
+        status.update_audio("aguardando")
+        status.update_llm("inativo")
+
+        self.notify(
+            f"Mic: {self.selection.mic_name}\nSistema: {self.selection.sys_name}",
+            title="Dispositivos Ativos",
+        )
+
+        loop = asyncio.get_running_loop()
+        ok = await loop.run_in_executor(
+            None,
+            self.session.start,
+            self.selection.mic_index,
+            self.selection.sys_index,
+            loop,
+        )
+
+        if not ok:
+            self.notify("Falha ao iniciar sessao. Verifique os logs.", severity="error")
+            await self.action_quit()
             return
-        self.running = False
 
-    def run(self):
-        signal.signal(signal.SIGINT, self.handle_sigint)
-        
-        if self.args.model in ["medium", "large", "large-v2", "large-v3"]:
-            console.print(Panel(f"[bold yellow]AVISO DE VRAM[/]\nO modelo '{self.args.model}' pode exceder o limite de 4GB da sua GPU. Se ocorrerem travamentos, use o modelo 'small'.", border_style="yellow"))
-            time.sleep(2)
-            
-        console.print(Panel("[bold green]Iniciando Transcritor Local CLI[/]\nAguarde o carregamento do modelo...", expand=False))
-        
-        if not self.session.start(mic_index=self.args.mic_index, sys_index=self.args.sys_index):
-            console.print("[bold red]Falha ao iniciar a sessão. Verifique os logs e os índices dos dispositivos.[/]")
-            return
+        status.update_whisper("carregado")
+        status.update_audio("capturando")
 
-        self.running = True
-        
-        console.clear()
-        
-        transcription_history = []
-        
-        def generate_layout():
-            layout = Layout()
-            layout.split(
-                Layout(name="header", size=3),
-                Layout(name="body")
-            )
-            
-            # Header
-            status = f"Backend: {self.session.transcriber.device.upper()} | Filas: Mic {self.session.audio_capture.mic_queue.qsize()} Sys {self.session.audio_capture.sys_queue.qsize()} Transc {self.session.transcription_queue.qsize()}"
-            layout["header"].update(Panel(f"[bold cyan]Transcritor Local em Execução[/] - {status}"))
-            
-            # Body
-            text_body = "".join(transcription_history[-15:])  # Últimas 15 linhas
-            layout["body"].update(Panel(text_body, title="[yellow]Transcrição Contínua (Pressione Ctrl+C para encerrar e gerar resumo)[/]"))
-            
-            return layout
+        self.run_worker(self.session.run_producer(), exclusive=False, group="audio")
+        self.run_worker(self.session.run_consumer(), exclusive=False, group="audio")
+        self.run_worker(self._event_listener(), exclusive=False, group="ui")
 
-        with Live(generate_layout(), refresh_per_second=4, console=console) as live:
-            while self.running:
-                try:
-                    event = self.session.session_events.get(timeout=0.25)
-                    if event["type"] == "transcription":
-                        transcription_history.append(event["text"])
-                        
-                except Empty:
-                    pass
-                
-                if not self.session.running:
-                    self.running = False
-                    
-                live.update(generate_layout())
-                
-        console.print("\n[bold red]Interrupção detectada (Ctrl+C). Encerrando a sessão e processando o áudio final...[/]")
-        self.session.stop()
-        console.print(f"[bold green]Sessão de transcrição encerrada. Arquivo bruto salvo em:[/] {self.session.output_file}")
-        
-        # Etapa de Resumo Local
-        from summarizer import SummarizerFactory
-        summarizer = SummarizerFactory.get_summarizer(provider=self.args.provider, model_name=self.args.llm)
-        
-        if summarizer.is_available():
-            if self.args.provider == "gemini":
-                console.print(Panel("[bold cyan][...] Verificando integridade da API Gemini (HealthCheck)...[/]"))
-                ok, stable_model = summarizer.verify_and_fallback()
-                if not ok:
-                    console.print("[bold red]Nenhum modelo Gemini estavel encontrado no momento.[/]")
-                elif stable_model != self.args.llm:
-                    console.print(f"[bold yellow][!] O modelo {self.args.llm} falhou no HealthCheck. Failover automatico para {stable_model} realizado.[/]")
-                self.args.llm = stable_model
-                
-            console.print(Panel(f"[bold cyan][OK] Gerando Resumo Inteligente com {self.args.provider.upper()} ({self.args.llm})...[/]\nIsso pode levar alguns minutos dependendo do tamanho da reuniao.", expand=False))
-            
+    async def _event_listener(self) -> None:
+        log = self.query_one(TranscriptionLog)
+        while self.session.running or not self.session.session_events.empty():
             try:
-                with open(self.session.output_file, "r", encoding="utf-8") as f:
-                    full_text = f.read()
-                    
-                summary = summarizer.summarize(full_text)
-                
-                summary_file = self.session.output_file.replace(".txt", "-resumo.md")
-                with open(summary_file, "w", encoding="utf-8") as f:
-                    f.write(summary)
-                    
-                console.print(f"[bold green]✅ Resumo em Markdown salvo com sucesso em:[/] {summary_file}")
-            except Exception as e:
-                console.print(f"[bold red]Erro ao processar o resumo: {e}[/]")
-        else:
-            console.print("[dim yellow]Serviço do Ollama não detectado. O resumo inteligente em Markdown foi ignorado. (Instale o Ollama para habilitar esta função)[/]")
+                event = await asyncio.wait_for(self.session.session_events.get(), timeout=0.5)
+                if event["type"] == "transcription":
+                    log.add_transcription(event["text"].strip())
+            except asyncio.TimeoutError:
+                continue
 
-if __name__ == "__main__":
+    # ------------------------------------------------------------------
+    # Acoes
+    # ------------------------------------------------------------------
+
+    async def action_stop_session(self) -> None:
+        if self._stopping:
+            return
+        self._stopping = True
+        await self._finalize()
+
+    async def action_quit(self) -> None:
+        if not self._stopping:
+            self._stopping = True
+            await self._finalize()
+        self.exit()
+
+    async def _finalize(self) -> None:
+        status = self.query_one(ServiceStatusBar)
+        status.update_audio("parado")
+        self.session.stop()
+        self.notify(f"Transcricao salva em:\n{self.session.output_file}", title="Sessao Encerrada")
+
+        provider = self.args.provider
+        summarizer = SummarizerFactory.get_summarizer(provider=provider)
+
+        if provider == "gemini":
+            if not summarizer.is_available():
+                self.notify("GEMINI_API_KEY nao configurada. Resumo ignorado.", severity="warning")
+                return
+            status.update_llm("verificando")
+            ok, stable_model = await summarizer.verify_and_fallback()
+            if not ok:
+                self.notify("Nenhum modelo Gemini disponivel.", severity="error")
+                return
+            summarizer.model_name = stable_model
+
+        status.update_llm("gerando")
+        self.notify(f"Gerando resumo com {provider.upper()}...", title="LLM")
+
+        try:
+            with open(self.session.output_file, encoding="utf-8") as f:
+                full_text = f.read()
+            summary = await summarizer.summarize(full_text)
+            summary_file = self.session.output_file.replace(".txt", "-resumo.md")
+            with open(summary_file, "w", encoding="utf-8") as f:
+                f.write(summary)
+            status.update_llm("pronto")
+            self.notify(f"Resumo salvo:\n{summary_file}", title="Resumo Gerado")
+        except Exception as exc:
+            logger.error(f"Erro ao gerar resumo: {exc}")
+            self.notify(f"Erro: {exc}", severity="error")
+
+
+# ======================================================================
+# App de selecao de dispositivos (ponto de entrada unificado)
+# ======================================================================
+
+class LauncherApp(AgyApp):
+    """
+    App de entrada que gerencia a selecao de dispositivos e o launch
+    da sessao de transcricao, tudo no mesmo terminal.
+    """
+
+    TITLE = "Transcritor Local — Setup"
+
+    def __init__(self, args: argparse.Namespace, devices: dict) -> None:
+        super().__init__()
+        self.args = args
+        self._devices = devices
+
+    def compose(self) -> ComposeResult:
+        # Tela de setup sera exibida via push_screen no on_mount
+        yield Header()
+        yield Static("")
+        yield Footer()
+
+    async def on_mount(self) -> None:
+        """Abre a tela de selecao de dispositivos imediatamente."""
+        def on_selection(selection: DeviceSelection | None) -> None:
+            if selection is None:
+                # Usuario saiu sem confirmar
+                self.exit()
+                return
+            # Troca para o app de transcricao no mesmo terminal
+            self.exit(result=selection)
+
+        await self.push_screen(
+            DeviceSetupScreen(self._devices),
+            callback=on_selection,
+        )
+
+
+# ======================================================================
+# CLI
+# ======================================================================
+
+def parse_args() -> argparse.Namespace:
+    default_provider = os.environ.get("LLM_PROVIDER", "ollama")
+    default_model = os.environ.get("WHISPER_MODEL_SIZE", "small")
+    default_lang = os.environ.get("WHISPER_LANGUAGE", "pt")
+    default_chunk = float(os.environ.get("AUDIO_CHUNK_DURATION", "10.0"))
+    default_overlap = float(os.environ.get("AUDIO_CHUNK_OVERLAP", "2.0"))
+
+    p = argparse.ArgumentParser(
+        description="Transcritor Local de Reunioes",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=(
+            "Exemplos:\n"
+            "  python main.py                        # selecao interativa de dispositivos\n"
+            "  python main.py --mic-index 1          # pula selecao de mic\n"
+            "  python main.py --provider gemini      # resumo via Gemini\n"
+            "  python main.py --list-devices         # lista dispositivos e sai\n"
+            "  python main.py --list-llms            # lista modelos LLM e sai\n"
+        ),
+    )
+    p.add_argument("--model", default=default_model, help=f"Tamanho do modelo Whisper (default: {default_model})")
+    p.add_argument("--chunk", type=float, default=default_chunk)
+    p.add_argument("--overlap", type=float, default=default_overlap)
+    p.add_argument("--lang", default=default_lang, help=f"Idioma (default: {default_lang})")
+    p.add_argument("--mic-index", type=int, default=None, help="Pular selecao: indice do microfone")
+    p.add_argument("--sys-index", type=int, default=None, help="Pular selecao: indice do loopback do sistema")
+    p.add_argument("--provider", choices=["ollama", "gemini"], default=default_provider)
+    p.add_argument("--list-devices", action="store_true", help="Lista dispositivos e sai")
+    p.add_argument("--list-llms", action="store_true", help="Lista modelos LLM do provedor e sai")
+    return p.parse_args()
+
+
+async def _cmd_list_llms(args: argparse.Namespace) -> None:
+    from rich.console import Console
+    from rich.table import Table
+    console = Console()
+    if args.provider == "gemini":
+        from summarizer import GeminiSummarizer
+        console.print("[bold cyan]Executando HealthCheck nos modelos Gemini...[/]")
+        models = await GeminiSummarizer.get_available_models(health_check=True)
+        t = Table(show_header=True, header_style="bold magenta")
+        t.add_column("Modelo")
+        t.add_column("Status")
+        for m in models:
+            t.add_row(m["name"], m["status"])
+    else:
+        from summarizer import OllamaSummarizer
+        models = await OllamaSummarizer.get_available_models()
+        t = Table(show_header=True, header_style="bold magenta")
+        t.add_column("Modelo Ollama")
+        for m in models:
+            t.add_row(m)
+    console.print(t)
+
+
+def _cmd_list_devices() -> None:
+    from rich.console import Console
+    from rich.table import Table
+    console = Console()
+    devices = AudioCapture.list_devices()
+
+    t_m = Table(title="Microfones", show_header=True, header_style="bold magenta")
+    t_m.add_column("Indice", justify="right")
+    t_m.add_column("Nome")
+    t_m.add_column("Canais", justify="right")
+    for d in devices["mics"]:
+        t_m.add_row(str(d["index"]), d["name"], str(d["maxInputChannels"]))
+    console.print(t_m)
+
+    t_s = Table(title="Loopback (Sistema)", show_header=True, header_style="bold magenta")
+    t_s.add_column("Indice", justify="right")
+    t_s.add_column("Nome")
+    t_s.add_column("Canais", justify="right")
+    for d in devices["loopbacks"]:
+        t_s.add_row(str(d["index"]), d["name"], str(d["maxInputChannels"]))
+    console.print(t_s)
+
+
+def _make_selection_from_args(
+    args: argparse.Namespace,
+    devices: dict,
+) -> DeviceSelection | None:
+    """
+    Se --mic-index e --sys-index foram passados, cria uma DeviceSelection
+    diretamente sem abrir a tela de setup.
+    """
+    if args.mic_index is None or args.sys_index is None:
+        return None
+
+    mic_info = next((d for d in devices["mics"] if d["index"] == args.mic_index), None)
+    sys_info = next((d for d in devices["loopbacks"] if d["index"] == args.sys_index), None)
+
+    if not mic_info or not sys_info:
+        return None
+
+    return DeviceSelection(
+        mic_index=mic_info["index"],
+        mic_name=mic_info["name"],
+        sys_index=sys_info["index"],
+        sys_name=sys_info["name"],
+    )
+
+
+def run() -> None:
     args = parse_args()
-    
-    if args.set_gemini_key:
-        from config import set_gemini_key
-        if set_gemini_key(args.set_gemini_key):
-            console.print("[bold green]Chave de API do Gemini salva com sucesso em config.json![/]")
-        else:
-            console.print("[bold red]Erro ao tentar salvar a chave do Gemini.[/]")
-        sys.exit(0)
-        
-    if args.set_default_provider:
-        from config import set_default
-        set_default("provider", args.set_default_provider)
-        console.print(f"[bold green]Provedor padrão salvo como '{args.set_default_provider}' em config.json![/]")
-        sys.exit(0)
-        
-    if args.set_default_llm:
-        from config import set_default
-        set_default(f"llm_{args.provider}", args.set_default_llm)
-        console.print(f"[bold green]Modelo LLM padrão para '{args.provider}' salvo como '{args.set_default_llm}' em config.json![/]")
+
+    if args.list_devices:
+        _cmd_list_devices()
         sys.exit(0)
 
     if args.list_llms:
-        from rich.table import Table
-        if args.provider == "gemini":
-            from summarizer import GeminiSummarizer
-            console.print("[bold cyan][...] Executando HealthCheck nos modelos do Gemini (isso levara alguns segundos)...[/]")
-            models = GeminiSummarizer.get_available_models(health_check=True)
-            provider_name = "Gemini"
-        else:
-            from summarizer import OllamaSummarizer
-            models = OllamaSummarizer.get_available_models()
-            provider_name = "Ollama"
-            
-        if not models:
-            console.print(f"[bold red]{provider_name} não configurado ou inacessível. Verifique a chave da API ou se o serviço está rodando.[/]")
-        else:
-            console.print(f"\n[bold cyan]Modelos LLM disponíveis ({provider_name})[/]")
-            t_llms = Table(show_header=True, header_style="bold magenta")
-            if provider_name == "Gemini":
-                t_llms.add_column("Nome do Modelo")
-                t_llms.add_column("Status de Saúde (HealthCheck)")
-                for m in models:
-                    t_llms.add_row(m["name"], m["status"])
-            else:
-                t_llms.add_column("Nome do Modelo")
-                for m in models:
-                    t_llms.add_row(m)
-            console.print(t_llms)
-            console.print("\nPara salvar um modelo como padrão, use:")
-            console.print(f"[bold yellow]python main.py --provider {args.provider} --set-default-llm <Nome>[/]")
+        asyncio.run(_cmd_list_llms(args))
         sys.exit(0)
-        
-    if args.list_devices:
-        from audio_capture import AudioCapture
-        from rich.table import Table
-        
-        devices = AudioCapture.list_devices()
-        
-        console.print("\n[bold cyan]Dispositivos de Captura (Microfones)[/]")
-        t_mics = Table(show_header=True, header_style="bold magenta")
-        t_mics.add_column("Índice", style="dim", justify="right")
-        t_mics.add_column("Nome")
-        t_mics.add_column("Canais", justify="right")
-        for d in devices["mics"]:
-            t_mics.add_row(str(d["index"]), d["name"], str(d["maxInputChannels"]))
-        console.print(t_mics)
-        
-        console.print("\n[bold cyan]Dispositivos de Loopback (Áudio do Sistema)[/]")
-        t_sys = Table(show_header=True, header_style="bold magenta")
-        t_sys.add_column("Índice", style="dim", justify="right")
-        t_sys.add_column("Nome")
-        t_sys.add_column("Canais", justify="right")
-        for d in devices["loopbacks"]:
-            t_sys.add_row(str(d["index"]), d["name"], str(d["maxInputChannels"]))
-        console.print(t_sys)
-        
-        sys.exit(0)
-        
-    app = AppCLI(args)
-    app.run()
 
+    # Detecta dispositivos antes de abrir qualquer TUI
+    devices = AudioCapture.list_devices()
+
+    if not devices["mics"] and not devices["loopbacks"]:
+        from rich.console import Console
+        Console().print("[bold red]Nenhum dispositivo de audio encontrado. Verifique os drivers.[/]")
+        sys.exit(1)
+
+    # Verifica se args ja tem dispositivos definidos (modo rapido/CI)
+    selection = _make_selection_from_args(args, devices)
+
+    if selection is None:
+        # Modo interativo: abre tela de selecao de dispositivos
+        launcher = LauncherApp(args, devices)
+        selection = launcher.run()
+
+    if selection is None:
+        # Usuario saiu da tela de setup sem confirmar
+        sys.exit(0)
+
+    # Inicia o app de transcricao com os dispositivos escolhidos
+    TranscriberApp(args, selection).run()
+
+
+if __name__ == "__main__":
+    run()

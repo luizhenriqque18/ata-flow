@@ -1,6 +1,14 @@
-__pycache__/
+﻿__pycache__/
 *.pyc
+*.pyo
 .venv/
 venv/
+.env
 transcriber.log
 transcricoes/
+.ruff_cache/
+.pytest_cache/
+.mypy_cache/
+dist/
+*.egg-info/
+config.json

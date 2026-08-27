@@ -1,192 +1,190 @@
-import os
-import time
+"""
+Gerenciador de sessao de transcricao de reunioes.
+
+Refatoracao em relacao ao original:
+- Loop de producao e consumo agora sao corrotinas asyncio (async def)
+- Remove logica de VAD manual por RMS (agora feito pelo Whisper via vad_filter)
+- Simplifica o buffer de audio e a uniao dos canais
+- Usa asyncio.Queue em vez de queue.Queue
+- Aceita qualquer STTStrategy — desacoplado do Whisper
+"""
+from __future__ import annotations
+
+import asyncio
 import logging
-import threading
-import numpy as np
-from queue import Queue, Empty
+import os
 from datetime import datetime
+
+import numpy as np
+
 from audio_capture import AudioCapture
-from transcriber import LocalTranscriber
+from agy_voice.interfaces import STTStrategy, TranscriptionSegment
+from agy_voice.stt import WhisperLocalSTT
 
 logger = logging.getLogger(__name__)
 
+
 class SessionManager:
-    def __init__(self, chunk_duration=10.0, overlap=2.0, max_queue_size=10):
+    """
+    Orquestra a captura de audio, a transcricao e a persistencia em arquivo.
+
+    O fluxo de dados e:
+    AudioCapture (callbacks) --> asyncio.Queue --> _producer --> _transcription_queue --> _consumer
+    """
+
+    def __init__(
+        self,
+        chunk_duration: float = 10.0,
+        overlap: float = 2.0,
+        max_queue_size: int = 10,
+        stt: STTStrategy | None = None,
+    ) -> None:
         self.chunk_duration = chunk_duration
         self.overlap = overlap
-        
-        self.audio_capture = AudioCapture()
-        self.transcriber = LocalTranscriber()
-        
-        # Fila de chunks prontos para transcrição
-        self.transcription_queue = Queue(maxsize=max_queue_size)
-        
-        self.running = False
-        self.producer_thread = None
-        self.consumer_thread = None
-        
-        self.output_dir = "./transcricoes"
-        os.makedirs(self.output_dir, exist_ok=True)
-        
-        filename = datetime.now().strftime("%Y-%m-%d_%Hh%M-reuniao.txt")
-        self.output_file = os.path.join(self.output_dir, filename)
-        
-        self.global_start_time = None
-        self.last_text = ""
-        
-        self.session_events = Queue()
 
-    def start(self, mic_index=None, sys_index=None):
-        logger.info("Inicializando sessão...")
-        if not self.transcriber.load_model():
-            logger.error("Falha ao carregar modelo. Sessão não iniciada.")
+        self.audio_capture = AudioCapture()
+        self.stt: STTStrategy = stt or WhisperLocalSTT()
+
+        self._transcription_queue: asyncio.Queue[dict] = asyncio.Queue(maxsize=max_queue_size)
+
+        self.running = False
+
+        output_dir = "./transcricoes"
+        os.makedirs(output_dir, exist_ok=True)
+        filename = datetime.now().strftime("%Y-%m-%d_%Hh%M-reuniao.txt")
+        self.output_file = os.path.join(output_dir, filename)
+
+        self._last_text = ""
+
+        # Fila de eventos consumida pela TUI para exibir a transcricao
+        self.session_events: asyncio.Queue[dict] = asyncio.Queue()
+
+    # ------------------------------------------------------------------
+    # Ciclo de vida
+    # ------------------------------------------------------------------
+
+    def start(self, mic_index: int | None = None, sys_index: int | None = None, loop: "asyncio.AbstractEventLoop | None" = None) -> bool:
+        """
+        Carrega o modelo STT e inicia a captura de audio.
+
+        Returns:
+            True se a sessao foi iniciada com sucesso.
+        """
+        logger.info("Carregando modelo STT...")
+        if not self.stt.load():
+            logger.error("Falha ao carregar modelo STT.")
             return False
-            
+
         self.running = True
-        self.global_start_time = time.time()
-        
-        self.audio_capture.start(mic_index=mic_index, sys_index=sys_index)
-        
-        self.producer_thread = threading.Thread(target=self._producer_loop, daemon=True)
-        self.consumer_thread = threading.Thread(target=self._consumer_loop, daemon=True)
-        
-        self.producer_thread.start()
-        self.consumer_thread.start()
-        
+        self.audio_capture.start(mic_index=mic_index, sys_index=sys_index, loop=loop)
+        logger.info("Sessao iniciada.")
         return True
 
-    def _producer_loop(self):
+    def stop(self) -> None:
+        """Para a captura e sinaliza o fim da sessao."""
+        logger.info("Encerrando sessao...")
+        self.running = False
+        self.audio_capture.stop()
+        logger.info("Sessao encerrada.")
+
+    # ------------------------------------------------------------------
+    # Corrotinas assincronas de processamento
+    # ------------------------------------------------------------------
+
+    async def run_producer(self) -> None:
+        """
+        Corrotina que acumula audio das filas e despacha chunks para transcricao.
+
+        Substitui o antigo _producer_loop (threading.Thread).
+        Sem polling de RMS — a deteccao de voz e delegada ao VAD do Whisper.
+        """
         sample_rate = self.audio_capture.sample_rate
         chunk_samples = int(self.chunk_duration * sample_rate)
-        overlap_samples = int(self.overlap * sample_rate)
-        step_samples = chunk_samples - overlap_samples
-        
+        step_samples = chunk_samples - int(self.overlap * sample_rate)
+
         mic_buffer = np.array([], dtype=np.float32)
         sys_buffer = np.array([], dtype=np.float32)
-        
-        current_time_offset = 0.0
-        
+
         while self.running:
-            # Puxa tudo que tiver nas filas
-            mic_new = []
+            # Drena as filas de audio sem bloquear
             while not self.audio_capture.mic_queue.empty():
-                mic_new.append(self.audio_capture.mic_queue.get())
-                
-            sys_new = []
+                mic_buffer = np.concatenate([mic_buffer, self.audio_capture.mic_queue.get_nowait()])
             while not self.audio_capture.sys_queue.empty():
-                sys_new.append(self.audio_capture.sys_queue.get())
-                
-            if mic_new:
-                mic_buffer = np.concatenate([mic_buffer] + mic_new)
-            if sys_new:
-                sys_buffer = np.concatenate([sys_buffer] + sys_new)
-                
+                sys_buffer = np.concatenate([sys_buffer, self.audio_capture.sys_queue.get_nowait()])
+
             if len(mic_buffer) >= chunk_samples or len(sys_buffer) >= chunk_samples:
                 mic_chunk = mic_buffer[:chunk_samples] if len(mic_buffer) > 0 else np.array([], dtype=np.float32)
                 sys_chunk = sys_buffer[:chunk_samples] if len(sys_buffer) > 0 else np.array([], dtype=np.float32)
-                
-                # Diarização simples baseada na energia (RMS) de cada canal
-                mic_rms = np.sqrt(np.mean(mic_chunk**2)) if len(mic_chunk) > 0 else 0.0
-                sys_rms = np.sqrt(np.mean(sys_chunk**2)) if len(sys_chunk) > 0 else 0.0
-                
-                mic_active = mic_rms > 0.005
-                sys_active = sys_rms > 0.005
-                
-                if mic_active and sys_active:
-                    speaker_tag = "[Você + Outros]"
-                elif mic_active:
-                    speaker_tag = "[Você]"
-                elif sys_active:
-                    speaker_tag = "[Outros]"
-                else:
-                    speaker_tag = ""
-                
+
                 mixed = AudioCapture.mix_and_normalize(mic_chunk, sys_chunk)
-                
                 if len(mixed) < chunk_samples:
-                    padded = np.zeros(chunk_samples, dtype=np.float32)
-                    padded[:len(mixed)] = mixed
-                    mixed = padded
-                
-                if self.transcription_queue.full():
-                    logger.warning("Fila de transcrição cheia. Atraso identificado. Descartando chunk antigo.")
+                    pad = np.zeros(chunk_samples, dtype=np.float32)
+                    pad[: len(mixed)] = mixed
+                    mixed = pad
+
+                if self._transcription_queue.full():
+                    logger.warning("Fila de transcricao cheia. Descartando chunk mais antigo.")
                     try:
-                        self.transcription_queue.get_nowait()
-                    except Empty:
+                        self._transcription_queue.get_nowait()
+                    except asyncio.QueueEmpty:
                         pass
-                
-                self.transcription_queue.put({
-                    "audio": mixed,
-                    "offset": current_time_offset,
-                    "speaker_tag": speaker_tag
-                })
-                
-                current_time_offset += (step_samples / sample_rate)
-                
+
+                await self._transcription_queue.put({"audio": mixed})
+
                 mic_buffer = mic_buffer[step_samples:]
                 sys_buffer = sys_buffer[step_samples:]
-                
-            time.sleep(0.5)
 
-    def _consumer_loop(self):
-        while self.running or not self.transcription_queue.empty():
+            await asyncio.sleep(0.1)
+
+    async def run_consumer(self) -> None:
+        """
+        Corrotina que transcreve os chunks da fila e emite eventos para a TUI.
+
+        Executa o Whisper em um executor para nao bloquear o event loop.
+        """
+        loop = asyncio.get_running_loop()
+
+        while self.running or not self._transcription_queue.empty():
             try:
-                item = self.transcription_queue.get(timeout=1.0)
-                audio_data = item["audio"]
-                offset = item["offset"]
-                speaker_tag = item.get("speaker_tag", "")
-                
-                segments = self.transcriber.transcribe(audio_data)
-                
-                if segments:
-                    full_text = " ".join([s["text"] for s in segments])
-                    
-                    deduped_text = self.transcriber.deduplicate(self.last_text, full_text)
-                    self.last_text = deduped_text
-                    
-                    if deduped_text.strip():
-                        start_time_str = self._format_time(offset)
-                        end_time_str = self._format_time(offset + segments[-1]["end"])
-                        
-                        tag_str = f"{speaker_tag} " if speaker_tag else ""
-                        formatted = f"[{start_time_str} - {end_time_str}] {tag_str}{deduped_text}\n"
-                        self._save_to_file(formatted)
-                        
-                        self.session_events.put({
-                            "type": "transcription",
-                            "text": formatted
-                        })
-                        
-                self.transcription_queue.task_done()
-            except Empty:
+                item = await asyncio.wait_for(self._transcription_queue.get(), timeout=1.0)
+            except asyncio.TimeoutError:
                 continue
-            except Exception as e:
-                logger.error(f"Erro no consumer loop: {e}")
 
-    def _format_time(self, seconds):
+            audio_data: np.ndarray = item["audio"]
+
+            # Whisper e CPU/GPU bound — executar fora do event loop
+            segments: list[TranscriptionSegment] = await loop.run_in_executor(
+                None, self.stt.transcribe, audio_data
+            )
+
+            if segments:
+                full_text = " ".join(s.text for s in segments)
+                deduped = WhisperLocalSTT.deduplicate(self._last_text, full_text)
+                self._last_text = deduped
+
+                if deduped.strip():
+                    start_str = self._fmt_time(segments[0].start)
+                    end_str = self._fmt_time(segments[-1].end)
+                    formatted = f"[{start_str} - {end_str}] {deduped}\n"
+                    self._save_line(formatted)
+                    await self.session_events.put({"type": "transcription", "text": formatted})
+
+            self._transcription_queue.task_done()
+
+    # ------------------------------------------------------------------
+    # Utilitarios privados
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _fmt_time(seconds: float) -> str:
         h = int(seconds // 3600)
         m = int((seconds % 3600) // 60)
         s = int(seconds % 60)
         return f"{h:02d}:{m:02d}:{s:02d}"
 
-    def _save_to_file(self, text):
+    def _save_line(self, text: str) -> None:
         try:
             with open(self.output_file, "a", encoding="utf-8") as f:
                 f.write(text)
-        except Exception as e:
-            logger.error(f"Erro ao salvar no arquivo: {e}")
-
-    def stop(self):
-        logger.info("Encerrando sessão (aguarde o processamento final)...")
-        self.running = False
-        
-        self.audio_capture.stop()
-        
-        if self.producer_thread:
-            self.producer_thread.join(timeout=5.0)
-        if self.consumer_thread:
-            # Espera até 10s para finalizar chunks pendentes
-            self.consumer_thread.join(timeout=10.0)
-            
-        logger.info("Sessão finalizada com sucesso.")
-
+        except OSError as exc:
+            logger.error(f"Erro ao salvar no arquivo: {exc}")

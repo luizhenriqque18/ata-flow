@@ -1,0 +1,75 @@
+/* =============================================================================
+   agy_tui Theme - Design System da Plataforma agy
+   Textual CSS Reference: https://textual.textualize.io/guide/CSS/
+   ============================================================================= */
+
+/* --- Variaveis de Cor --- */
+$agy-primary: #00d4aa;
+$agy-accent:  #7c6af7;
+$agy-danger:  #ff5c5c;
+$agy-warning: #f5c518;
+
+/* --- App Root --- */
+Screen {
+    background: $surface;
+}
+
+/* --- Header --- */
+Header {
+    background: $agy-primary 20%;
+    color: $text;
+    text-style: bold;
+}
+
+/* --- Footer --- */
+Footer {
+    background: $surface-darken-1;
+}
+
+/* --- Paineis e Bordas --- */
+.panel {
+    border: round $agy-primary 60%;
+    margin: 0 0 1 0;
+    padding: 0 1;
+}
+
+/* --- Titulos de Secao --- */
+.section-title {
+    color: $agy-primary;
+    text-style: bold;
+    padding: 0 1;
+}
+
+/* --- Botoes --- */
+Button {
+    background: $agy-primary 80%;
+    color: $background;
+    border: none;
+}
+
+Button:hover {
+    background: $agy-primary;
+}
+
+Button.-danger {
+    background: $agy-danger 80%;
+}
+
+Button.-danger:hover {
+    background: $agy-danger;
+}
+
+/* --- Input --- */
+Input {
+    border: round $agy-primary 40%;
+}
+
+Input:focus {
+    border: round $agy-primary;
+}
+
+/* --- Notificacoes --- */
+Toast {
+    background: $surface;
+    border-left: thick $agy-accent;
+}
