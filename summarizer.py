@@ -27,7 +27,7 @@ Voce e um assistente especialista em criar atas de reunioes corporativas.
 Analise a transcricao bruta abaixo e produza um resumo profissional em Markdown.
 
 Use linguagem formal, objetiva e concisa. Evite repeticoes.
-A transcricao pode conter erros de reconhecimento de voz — interprete com bom senso.
+A transcricao pode conter erros de reconhecimento de voz â€” interprete com bom senso.
 
 Siga EXATAMENTE esta estrutura:
 
@@ -43,7 +43,7 @@ Siga EXATAMENTE esta estrutura:
 - (Decisao 1)
 
 ## Tarefas e Proximos Passos
-- [Responsavel] — [Tarefa] — [Prazo, se mencionado]
+- [Responsavel] â€” [Tarefa] â€” [Prazo, se mencionado]
 
 ## Questoes Pendentes
 - (Duvidas sem resolucao)
@@ -117,7 +117,7 @@ class OllamaSummarizer:
 class GeminiSummarizer:
     """Gera resumos usando a API do Google Gemini."""
 
-    def __init__(self, model_name: str = "gemini-3.5-flash") -> None:
+    def __init__(self, model_name: str = "gemini-3.1-flash-lite") -> None:
         self.model_name = model_name
         self.api_key: str = os.environ.get("GEMINI_API_KEY", "")
 
@@ -184,8 +184,12 @@ class GeminiSummarizer:
 
         logger.warning(f"Modelo {self.model_name} instavel ({status}). Iniciando failover...")
         all_models = await self.get_available_models(health_check=False)
-        # Inverte a lista para testar os modelos mais recentes primeiro (evitando 404 em legados)
-        candidates = [m for m in reversed(all_models) if ("flash" in m or "lite" in m) and m != self.model_name][:3]
+        # Filtra candidatos mais confiaveis: nao pegar tts, omni, ou vision, prioriza lite/flash puro
+        candidates = []
+        for m in reversed(all_models):
+            if ("flash" in m or "lite" in m) and "tts" not in m and "omni" not in m and "image" not in m and m != self.model_name:
+                candidates.append(m)
+        candidates = candidates[:3]
         if not candidates:
             return False, self.model_name
 
@@ -228,7 +232,7 @@ class SummarizerFactory:
     @staticmethod
     def get_summarizer(provider: str, model_name: str | None = None) -> OllamaSummarizer | GeminiSummarizer:
         if provider == "gemini":
-            model = model_name or os.environ.get("GEMINI_DEFAULT_MODEL", "gemini-3.5-flash")
+            model = model_name or os.environ.get("GEMINI_DEFAULT_MODEL", "gemini-3.1-flash-lite")
             return GeminiSummarizer(model_name=model)
         model = model_name or os.environ.get("OLLAMA_DEFAULT_MODEL", "llama3.2:1b")
         return OllamaSummarizer(model_name=model)
