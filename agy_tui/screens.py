@@ -7,7 +7,6 @@ antes de iniciar qualquer sessao de captura.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import ClassVar
 
 from textual import on
 from textual.app import ComposeResult
@@ -104,8 +103,9 @@ class DeviceSetupScreen(Screen[DeviceSelection]):
         background: $success 80%;
     }
 
-    Button#btn-start:hover {
+    Button#btn-start:hover, Button#btn-start:focus {
         background: $success;
+        text-style: bold;
     }
 
     Button#btn-start:disabled {
@@ -115,9 +115,9 @@ class DeviceSetupScreen(Screen[DeviceSelection]):
     """
 
     BINDINGS = [
-        Binding("tab", "focus_next", "Proxima tabela", show=True),
-        Binding("shift+tab", "focus_previous", "Tabela anterior", show=True),
+        Binding("tab", "focus_next", "Focar", show=False),
         Binding("enter", "select_row", "Selecionar", show=True),
+        Binding("ctrl+s", "start", "Iniciar (Atalho)", show=True),
         Binding("ctrl+c", "app.quit", "Sair", show=True),
     ]
 
@@ -132,16 +132,16 @@ class DeviceSetupScreen(Screen[DeviceSelection]):
         with Container(id="setup-container"):
             yield Static("[bold]Transcritor Local[/bold] — Selecao de Dispositivos", id="setup-title")
             yield Static(
-                "Use [bold]↑ ↓[/] para navegar, [bold]Enter[/] para selecionar, [bold]Tab[/] para trocar de tabela",
+                "Navegue com as [bold]Setas[/] e aperte [bold]Enter[/] para confirmar cada dispositivo.",
                 id="setup-hint"
             )
 
             with Vertical(classes="device-section"):
-                yield Label("Microfone (sua voz):", classes="section-label")
+                yield Label("1. Microfone (sua voz):", classes="section-label")
                 yield DataTable(id="mic-table", cursor_type="row", zebra_stripes=True)
 
             with Vertical(classes="device-section"):
-                yield Label("Audio do Sistema (loopback — voz dos outros):", classes="section-label")
+                yield Label("2. Audio do Sistema (loopback — voz dos outros):", classes="section-label")
                 yield DataTable(id="sys-table", cursor_type="row", zebra_stripes=True)
 
             yield Static("", id="selected-info")
@@ -153,29 +153,16 @@ class DeviceSetupScreen(Screen[DeviceSelection]):
         yield Footer()
 
     def on_mount(self) -> None:
-        # Popula tabela de microfones
         mic_table = self.query_one("#mic-table", DataTable)
         mic_table.add_columns("Idx", "Nome", "Canais")
         for dev in self._devices.get("mics", []):
-            mic_table.add_row(
-                str(dev["index"]),
-                dev["name"],
-                str(dev["maxInputChannels"]),
-                key=str(dev["index"]),
-            )
+            mic_table.add_row(str(dev["index"]), dev["name"], str(dev["maxInputChannels"]), key=str(dev["index"]))
 
-        # Popula tabela de loopbacks
         sys_table = self.query_one("#sys-table", DataTable)
         sys_table.add_columns("Idx", "Nome", "Canais")
         for dev in self._devices.get("loopbacks", []):
-            sys_table.add_row(
-                str(dev["index"]),
-                dev["name"],
-                str(dev["maxInputChannels"]),
-                key=str(dev["index"]),
-            )
+            sys_table.add_row(str(dev["index"]), dev["name"], str(dev["maxInputChannels"]), key=str(dev["index"]))
 
-        # Foco inicial na tabela de microfone
         mic_table.focus()
         self._update_info()
 
@@ -186,7 +173,7 @@ class DeviceSetupScreen(Screen[DeviceSelection]):
         if row_idx < len(mics):
             self._selected_mic = mics[row_idx]
             self._update_info()
-            # Move foco para sys-table para agilizar o fluxo
+            # Foco automatico na proxima tabela apos escolher o mic
             self.query_one("#sys-table", DataTable).focus()
 
     @on(DataTable.RowSelected, "#sys-table")
@@ -196,17 +183,16 @@ class DeviceSetupScreen(Screen[DeviceSelection]):
         if row_idx < len(loopbacks):
             self._selected_sys = loopbacks[row_idx]
             self._update_info()
+            # Foco automatico no botao Iniciar apos escolher o sistema
+            if self._selected_mic and self._selected_sys:
+                self.query_one("#btn-start", Button).focus()
 
     def _update_info(self) -> None:
-        """Atualiza o painel de selecao e habilita/desabilita o botao."""
-        mic_str = f"[green]✓[/] {self._selected_mic['name']}" if self._selected_mic else "[dim]Nenhum selecionado[/]"
-        sys_str = f"[green]✓[/] {self._selected_sys['name']}" if self._selected_sys else "[dim]Nenhum selecionado[/]"
+        mic_str = f"[green]✓[/] {self._selected_mic['name']}" if self._selected_mic else "[dim]Pendente...[/]"
+        sys_str = f"[green]✓[/] {self._selected_sys['name']}" if self._selected_sys else "[dim]Pendente...[/]"
 
-        info = self.query_one("#selected-info", Static)
-        info.update(f"Mic: {mic_str}   |   Sistema: {sys_str}")
-
-        btn = self.query_one("#btn-start", Button)
-        btn.disabled = not (self._selected_mic and self._selected_sys)
+        self.query_one("#selected-info", Static).update(f"Mic: {mic_str}   |   Sistema: {sys_str}")
+        self.query_one("#btn-start", Button).disabled = not (self._selected_mic and self._selected_sys)
 
     @on(Button.Pressed, "#btn-start")
     def on_start(self) -> None:
@@ -219,6 +205,10 @@ class DeviceSetupScreen(Screen[DeviceSelection]):
                     sys_name=self._selected_sys["name"],
                 )
             )
+
+    def action_start(self) -> None:
+        """Acao chamada via atalho Ctrl+S para pular para gravacao se tudo estiver ok."""
+        self.on_start()
 
     @on(Button.Pressed, "#btn-quit")
     def on_quit(self) -> None:
