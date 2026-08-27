@@ -1,4 +1,4 @@
-﻿"""
+"""
 Geradores de resumo LLM para transcricoes de reunioes.
 
 Refatoracao em relacao ao original:
@@ -117,7 +117,7 @@ class OllamaSummarizer:
 class GeminiSummarizer:
     """Gera resumos usando a API do Google Gemini."""
 
-    def __init__(self, model_name: str = "gemini-2.5-flash") -> None:
+    def __init__(self, model_name: str = "gemini-3.5-flash") -> None:
         self.model_name = model_name
         self.api_key: str = os.environ.get("GEMINI_API_KEY", "")
 
@@ -184,7 +184,8 @@ class GeminiSummarizer:
 
         logger.warning(f"Modelo {self.model_name} instavel ({status}). Iniciando failover...")
         all_models = await self.get_available_models(health_check=False)
-        candidates = [m for m in all_models if ("flash" in m or "lite" in m) and m != self.model_name][:3]
+        # Inverte a lista para testar os modelos mais recentes primeiro (evitando 404 em legados)
+        candidates = [m for m in reversed(all_models) if ("flash" in m or "lite" in m) and m != self.model_name][:3]
         if not candidates:
             return False, self.model_name
 
@@ -227,7 +228,7 @@ class SummarizerFactory:
     @staticmethod
     def get_summarizer(provider: str, model_name: str | None = None) -> OllamaSummarizer | GeminiSummarizer:
         if provider == "gemini":
-            model = model_name or os.environ.get("GEMINI_DEFAULT_MODEL", "gemini-2.5-flash")
+            model = model_name or os.environ.get("GEMINI_DEFAULT_MODEL", "gemini-3.5-flash")
             return GeminiSummarizer(model_name=model)
         model = model_name or os.environ.get("OLLAMA_DEFAULT_MODEL", "llama3.2:1b")
         return OllamaSummarizer(model_name=model)
