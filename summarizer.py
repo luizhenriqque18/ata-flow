@@ -111,14 +111,15 @@ class OllamaSummarizer:
 
 
 # ======================================================================
-# Gemini (Using official google-genai SDK)
+# Gemini
 # ======================================================================
 import asyncio
 from google import genai
 from google.genai.errors import APIError
 
+
 class GeminiSummarizer:
-    """Gera resumos usando a API do Google Gemini (google-genai SDK)."""
+    """Gera resumos usando a API do Google Gemini via httpx (async nativo)."""
 
     def __init__(self, model_name: str = "gemini-3.1-flash-lite") -> None:
         self.model_name = model_name
@@ -127,71 +128,81 @@ class GeminiSummarizer:
     def is_available(self) -> bool:
         return bool(self.api_key)
 
-    async def get_available_models(self, health_check: bool = False) -> list[str]:
+    def _url(self, model: str | None = None) -> str:
+        m = model or self.model_name
+        return f"{_GEMINI_BASE}/models/{m}:generateContent?key={self.api_key}"
+
+    @staticmethod
+    def _extract_text(data: dict) -> str | None:
+        """Extrai o texto da resposta JSON de forma segura."""
+        try:
+            return data["candidates"][0]["content"]["parts"][0]["text"]
+        except (KeyError, IndexError, TypeError):
+            return None
+
+    async def get_available_models(self) -> list[str]:
+        """Lista modelos usando o SDK google-genai (sincrono em thread)."""
         if not self.api_key:
             return []
         try:
-            # Roda no loop assincrono pra nao bloquear (models.list é sincrono na lib base)
             client = genai.Client(api_key=self.api_key)
-            
-            def fetch_models():
-                models = []
-                for m in client.models.list():
-                    actions = getattr(m, "supported_actions", [])
-                    if "generateContent" in actions:
-                        models.append(m.name.replace("models/", ""))
-                return models
 
-            models = await asyncio.to_thread(fetch_models)
-            return models
+            def fetch():
+                return [
+                    m.name.replace("models/", "")
+                    for m in client.models.list()
+                    if "generateContent" in getattr(m, "supported_actions", [])
+                ]
+
+            return await asyncio.to_thread(fetch)
         except Exception as exc:
             logger.error(f"Erro ao buscar modelos Gemini: {exc}")
             return []
 
-    async def _ping_model(self, client: genai.Client, model: str) -> tuple[str, str]:
+    async def _ping_model(self, client: httpx.AsyncClient, model: str) -> tuple[str, str]:
+        """Pinga um modelo via httpx para verificar disponibilidade."""
         try:
-            res = await client.aio.models.generate_content(
-                model=model,
-                contents='ping'
+            r = await client.post(
+                self._url(model),
+                json={"contents": [{"parts": [{"text": "ping"}]}]},
             )
-            if res.text:
+            if r.status_code == 200 and self._extract_text(r.json()):
                 return model, "[OK]"
-            return model, "[FAIL]"
-        except APIError as e:
-            return model, f"[FAIL] ({e.code})"
-        except Exception as e:
-            logger.error(f"Erro no ping do {model}: {repr(e)}")
+            return model, f"[FAIL] ({r.status_code})"
+        except Exception:
             return model, "[TIMEOUT]"
-
-    async def _run_health_check(self, client: genai.Client, models: list[str]) -> dict[str, str]:
-        tasks = [self._ping_model(client, m) for m in models]
-        results = await asyncio.gather(*tasks, return_exceptions=True)
-        return {m: s for r in results if isinstance(r, tuple) for m, s in [r]}
 
     async def verify_and_fallback(self) -> tuple[bool, str]:
         """Testa o modelo atual; faz failover inteligente se falhar."""
-        client = genai.Client(api_key=self.api_key)
-        _, status = await self._ping_model(client, self.model_name)
-        if "[OK]" in status:
-            return True, self.model_name
+        async with httpx.AsyncClient(timeout=8.0) as client:
+            _, status = await self._ping_model(client, self.model_name)
+            if "[OK]" in status:
+                return True, self.model_name
 
-        logger.warning(f"Modelo {self.model_name} instavel ({status}). Iniciando failover...")
-        all_models = await self.get_available_models(health_check=False)
-        
-        candidates = []
-        for m in reversed(all_models):
-            if ("flash" in m or "lite" in m) and "tts" not in m and "omni" not in m and "image" not in m and m != self.model_name:
-                candidates.append(m)
-        candidates = candidates[:3]
-        
-        if not candidates:
-            return False, self.model_name
+            logger.warning(f"Modelo {self.model_name} instavel ({status}). Iniciando failover...")
+            all_models = await self.get_available_models()
 
-        statuses = await self._run_health_check(client, candidates)
-        for cand in candidates:
-            if "[OK]" in statuses.get(cand, ""):
-                self.model_name = cand
-                return True, cand
+            candidates = [
+                m for m in reversed(all_models)
+                if ("flash" in m or "lite" in m)
+                and "tts" not in m
+                and "omni" not in m
+                and "image" not in m
+                and m != self.model_name
+            ][:3]
+
+            if not candidates:
+                return False, self.model_name
+
+            results = await asyncio.gather(
+                *[self._ping_model(client, m) for m in candidates],
+                return_exceptions=True,
+            )
+            statuses = {m: s for r in results if isinstance(r, tuple) for m, s in [r]}
+            for cand in candidates:
+                if "[OK]" in statuses.get(cand, ""):
+                    self.model_name = cand
+                    return True, cand
 
         return False, self.model_name
 
@@ -201,18 +212,21 @@ class GeminiSummarizer:
         if not self.is_available():
             return "Erro: GEMINI_API_KEY nao configurada. Adicione ao arquivo .env."
 
+        payload = {"contents": [{"parts": [{"text": _build_prompt(text)}]}]}
         try:
-            client = genai.Client(api_key=self.api_key, http_options={'timeout': 120.0})
-            logger.info(f"Enviando transcricao para Gemini ({self.model_name})...")
-            
-            response = await client.aio.models.generate_content(
-                model=self.model_name,
-                contents=_build_prompt(text)
-            )
-            return response.text
-        except APIError as exc:
-            logger.error(f"Erro da API do Gemini: {exc.message}")
-            return f"Erro na API do Gemini: {exc.code} - {exc.message}"
+            async with httpx.AsyncClient(timeout=120.0) as client:
+                logger.info(f"Enviando transcricao para Gemini ({self.model_name})...")
+                r = await client.post(self._url(), json=payload)
+                r.raise_for_status()
+                result = self._extract_text(r.json())
+                if result is None:
+                    finish = r.json().get("candidates", [{}])[0].get("finishReason", "UNKNOWN")
+                    logger.error(f"Gemini sem texto. finish_reason={finish}")
+                    return f"Erro: Gemini nao retornou texto (motivo: {finish})."
+                return result
+        except httpx.HTTPStatusError as exc:
+            logger.error(f"Erro HTTP Gemini {exc.response.status_code}: {exc.response.text[:200]}")
+            return f"Erro na API do Gemini: {exc.response.status_code}"
         except Exception as exc:
             logger.error(f"Erro ao chamar Gemini: {exc}")
             return f"Erro interno ao gerar resumo via Gemini: {exc}"
