@@ -45,7 +45,7 @@ logger = logging.getLogger("main")
 class TranscriberApp(AgyApp):
     """Aplicacao principal de transcricao de reunioes."""
 
-    TITLE = "Transcritor Local"
+    TITLE = "AtaFlow"
     SUB_TITLE = "Ctrl+S para encerrar e gerar resumo"
 
     BINDINGS = [
@@ -192,7 +192,7 @@ class LauncherApp(AgyApp):
     da sessao de transcricao, tudo no mesmo terminal.
     """
 
-    TITLE = "Transcritor Local — Setup"
+    TITLE = "AtaFlow — Setup"
 
     def __init__(self, args: argparse.Namespace, devices: dict) -> None:
         super().__init__()
@@ -233,7 +233,7 @@ def parse_args() -> argparse.Namespace:
     default_overlap = float(os.environ.get("AUDIO_CHUNK_OVERLAP", "2.0"))
 
     p = argparse.ArgumentParser(
-        description="Transcritor Local de Reunioes",
+        description="AtaFlow - Gerador de Atas de Reunioes",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=(
             "Exemplos:\n"

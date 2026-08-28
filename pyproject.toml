@@ -3,9 +3,9 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "transcriber-local"
+name = "ataflow"
 version = "0.2.0"
-description = "Transcritor local de reunioes com TUI baseada em Textual"
+description = "AtaFlow - Transcritor e gerador de atas de reunioes com TUI"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [

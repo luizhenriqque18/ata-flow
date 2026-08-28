@@ -1,4 +1,4 @@
-﻿# Contribuindo com o transcriber-local
+# Contribuindo com o ataflow
 
 Obrigado pelo interesse em contribuir! Este documento explica como configurar o ambiente de desenvolvimento e entender a arquitetura do projeto.
 
@@ -13,7 +13,7 @@ Obrigado pelo interesse em contribuir! Este documento explica como configurar o 
 `powershell
 # 1. Clone o repositorio
 git clone <URL>
-cd transcriber-local
+cd ataflow
 
 # 2. Instale as dependencias (uv cria o .venv automaticamente)
 uv sync --extra dev
@@ -57,7 +57,7 @@ uv run ruff format .
 ## Arquitetura
 
 `
-transcriber-local/
+ataflow/
 |-- main.py                   # Ponto de entrada: App Textual
 |-- audio_capture.py          # Captura WASAPI (microfone + sistema)
 |-- session_manager.py        # Orquestra audio -> STT -> arquivo

@@ -130,7 +130,7 @@ class DeviceSetupScreen(Screen[DeviceSelection]):
     def compose(self) -> ComposeResult:
         yield Header()
         with Container(id="setup-container"):
-            yield Static("[bold]Transcritor Local[/bold] — Selecao de Dispositivos", id="setup-title")
+            yield Static("[bold]AtaFlow[/bold] — Selecao de Dispositivos", id="setup-title")
             yield Static(
                 "Navegue com as [bold]Setas[/] e aperte [bold]Enter[/] para confirmar cada dispositivo.",
                 id="setup-hint"
