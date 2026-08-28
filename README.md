@@ -1,102 +1,91 @@
-# AtaFlow CLI (v0.2)
+# 🎙️ AtaFlow (v0.2)
+**O seu assistente pessoal e 100% privado para transformar reuniões em atas perfeitas.**
 
-O AtaFlow Ã© uma ferramenta de linha de comando com uma **Interface GrÃ¡fica no Terminal (TUI)** desenvolvida em Python. Ele escuta simultaneamente o seu microfone e o Ã¡udio interno do sistema (reuniÃµes, vÃ­deos, jogos) e gera uma transcriÃ§Ã£o em tempo real, operando **100% offline** na sua mÃ¡quina.
+O **AtaFlow** é uma ferramenta de linha de comando com uma **Interface Gráfica no Terminal (TUI)** incrivelmente fluida, desenvolvida em Python. Ele escuta simultaneamente o seu microfone e o áudio do sistema (colegas de trabalho, vídeos, apresentações) e gera uma transcrição em tempo real, operando **100% offline** na sua máquina para garantir privacidade absoluta.
 
-Na versÃ£o 0.2, a aplicaÃ§Ã£o ganhou uma reescrita arquitetural completa utilizando a plataforma gy, uma nova TUI interativa via **Textual**, e gestÃ£o moderna de ambiente com **uv** e **dotenv**.
-
-## ðŸš€ Funcionalidades
-- **TUI Interativa:** Interface visual diretamente no terminal. NÃ£o Ã© mais necessÃ¡rio procurar Ã­ndices de dispositivos manualmente â€” basta abrir o app e selecionar com as setas do teclado.
-- **DiarizaÃ§Ã£o Simples:** Rotula automaticamente cada linha da transcriÃ§Ã£o com [VocÃª], [Outros] ou [VocÃª + Outros].
-- **Resumo Inteligente:** Gera uma ata profissional em Markdown com os pontos principais e decisÃµes assim que a reuniÃ£o acaba. Suporta IA local (Ollama) ou nuvem (Gemini).
-- **Processamento Offline:** Utiliza o modelo aster-whisper (acelerado por CUDA) para a transcriÃ§Ã£o. Privacidade absoluta.
-- **Tratamento de Ãudio Robusto:** Realiza o *downmix* (EstÃ©reo -> Mono) e *resample* (ex: 48kHz -> 16kHz) nativo para evitar alucinaÃ§Ãµes da IA.
-- **Arquitetura Desacoplada:** CÃ³digo altamente modular utilizando gy_tui (biblioteca TUI reutilizÃ¡vel) e gy_voice (pacote com Strategy Pattern para integraÃ§Ãµes de voz).
+Diga adeus ao trabalho manual de anotar tudo durante as calls!
 
 ---
 
-## ðŸ› ï¸ InstalaÃ§Ã£o
+## 🚀 Principais Funcionalidades
 
-Siga os passos abaixo apÃ³s clonar este repositÃ³rio para a sua mÃ¡quina Windows:
+- **🖥️ Interface Visual de Terminal (TUI):** Navegue com facilidade. Esqueça a configuração manual de índices de áudio — basta abrir o app e selecionar seus dispositivos com as setas do teclado.
+- **🗣️ Diarização Automática:** O sistema identifica e rotula automaticamente quem está falando com as tags `[Você]`, `[Outros]` ou `[Você + Outros]`.
+- **🧠 Resumos Inteligentes com IA:** Ao final da reunião, gera uma ata profissional e estruturada em Markdown, destacando pontos principais e decisões. Suporta IA local (**Ollama**) ou em nuvem (**Gemini**).
+- **🔒 Privacidade e Performance:** Transcrição feita localmente com o motor **Faster-Whisper** (com suporte à aceleração CUDA para placas NVIDIA). Ninguém ouve suas reuniões além de você.
+- **🎛️ Processamento de Áudio Avançado:** Faz o *downmix* (Estéreo -> Mono) e *resample* (para 16kHz) nativamente para garantir a precisão máxima do Whisper e evitar alucinações da IA.
 
-### 1. Preparar o Ambiente Python
-Este projeto utiliza a ferramenta moderna [uv](https://docs.astral.sh/uv/) para gerenciar dependÃªncias e o ambiente virtual de forma ultrarrÃ¡pida. Certifique-se de ter o Python 3.12+ instalado.
+---
 
-`powershell
-# Instale as dependÃªncias (o uv cria o .venv automaticamente)
+## 🛠️ Guia de Instalação Rápida
+
+Configure o AtaFlow no seu Windows em poucos passos:
+
+### 1. Preparar o Ambiente
+Usamos o [uv](https://docs.astral.sh/uv/), o gerenciador de pacotes Python ultrarrápido. (Requer Python 3.12+).
+
+```powershell
+# Sincroniza e instala todas as dependências isoladamente no .venv
 uv sync
-`
+```
 
-### 2. Configurar VariÃ¡veis de Ambiente
-O projeto agora utiliza um arquivo .env para configuraÃ§Ãµes seguras (substituindo o antigo config.json).
+### 2. Configurações (.env)
+Copie o template de configurações e ajuste conforme necessário:
 
-1. Copie o template:
-`powershell
+```powershell
 copy .env.example .env
-`
-2. Edite o arquivo .env gerado e defina suas preferÃªncias (como a chave do Gemini, se for usÃ¡-lo, idioma e modelo do Whisper).
+```
+*(No arquivo `.env`, você pode definir o idioma padrão, escolher entre Gemini/Ollama, etc).*
 
-### 3. Habilitar Placa de VÃ­deo (ObrigatÃ³rio para NVIDIA)
-Para que a transcriÃ§Ã£o reconheÃ§a sua GPU (ex: GTX 1650) corretamente no Windows e use aceleraÃ§Ã£o de hardware, instale as bibliotecas do cuBLAS via uv pip:
-`powershell
+### 3. Habilitar Aceleração (Apenas Placas NVIDIA)
+Para processar o áudio com a sua placa de vídeo (como uma RTX ou GTX), instale as bibliotecas NVIDIA essenciais:
+
+```powershell
 uv pip install nvidia-cublas-cu12 nvidia-cudnn-cu12
-`
-*(O script injeta essas bibliotecas dinamicamente no PATH, vocÃª nÃ£o precisa configurar variÃ¡veis de ambiente).*
+```
 
-### 4. Instalar o Motor de Resumos
-O sistema gera atas automÃ¡ticas apÃ³s as reuniÃµes usando InteligÃªncia Artificial.
+### 4. Escolher o Motor de IA para os Resumos
 
-**OpÃ§Ã£o A: Ollama (100% Offline, Maior Privacidade)**
-1. Baixe e instale o [Ollama para Windows](https://ollama.com/).
-2. Abra um terminal comum e baixe o modelo padrÃ£o:
-`powershell
-ollama run llama3.2:1b
-`
-3. No seu .env, defina LLM_PROVIDER=ollama.
+**Modo Ninja (100% Offline com Ollama)**
+1. Instale o [Ollama para Windows](https://ollama.com/).
+2. Baixe o modelo: `ollama run llama3.2:1b`
+3. No seu `.env`, defina `LLM_PROVIDER=ollama`
 
-**OpÃ§Ã£o B: Google Gemini (Online, Maior Qualidade)**
-Se vocÃª possui uma chave de API do Google Gemini, vocÃª pode configurÃ¡-la no .env:
-`env
+**Modo Nuvem (Máxima Qualidade com Google Gemini)**
+1. No seu `.env`, configure:
+```env
 GEMINI_API_KEY=sua_chave_aqui
 LLM_PROVIDER=gemini
-`
+```
 
 ---
 
-## ðŸ’» Como Usar no Dia a Dia
+## 💻 Como Usar no Dia a Dia
 
-A nova interface resolve os dispositivos para vocÃª! Basta executar:
+Para iniciar a mágica, apenas rode:
 
-`powershell
+```powershell
 uv run python main.py
-`
+```
+*(💡 Dica: Se você usou nosso script `criar_atalho.bat`, basta dar duplo clique no atalho gerado na Área de Trabalho!)*
 
-### O Fluxo:
-1. **Setup Visual:** O app listarÃ¡ seus microfones e as saÃ­das de loopback do sistema. Use as **Setas**, **Tab** e **Enter** para escolher os dispositivos.
-2. **TranscriÃ§Ã£o em Tempo Real:** A interface Textual serÃ¡ carregada exibindo o status do Ã¡udio, carregamento do modelo Whisper na GPU e o log de transcriÃ§Ã£o em tempo real.
-3. **Comandos da Interface:**
-   - **Ctrl+L**: Limpa o log visual.
-   - **F1**: Exibe ajuda e comandos disponÃ­veis na interface.
-   - **Ctrl+S ou Ctrl+C**: **Encerra a reuniÃ£o** e comeÃ§a a gerar o resumo.
+### 🎮 Fluxo de Uso:
+1. **Configuração Rápida:** A tela inicial lista seus microfones e o áudio do sistema (Loopback). Use as setas do teclado e o `Enter` para selecionar.
+2. **A Mágica Acontece:** A interface TUI inicia, mostrando a saúde do áudio, o carregamento do Whisper na sua GPU, e a transcrição ao vivo.
+3. **Encerrando a Call:** Acabou a reunião? Pressione **`Ctrl + S`**. 
+   - O AtaFlow interrompe a gravação.
+   - Salva a transcrição bruta na pasta `./transcricoes/`.
+   - Aciona a IA (Ollama ou Gemini) para ler a conversa e cuspir uma **Ata Profissional em Markdown**.
+   - Você é notificado e o app encerra sozinho.
 
-### Modos RÃ¡pidos (CLI)
-Se vocÃª quiser pular a tela de seleÃ§Ã£o inicial (Ãºtil para automaÃ§Ã£o), vocÃª ainda pode passar os Ã­ndices diretamente:
-`powershell
-# Lista os Ã­ndices no terminal e sai
-uv run python main.py --list-devices
-
-# Inicia direto com os Ã­ndices desejados
-uv run python main.py --mic-index 1 --sys-index 31
-`
-
-### ðŸ Encerrando e Salvando a SessÃ£o
-Quando a reuniÃ£o acabar, pressione **Ctrl + S** dentro da interface.
-O programa farÃ¡ o seguinte:
-1. PararÃ¡ a captura de Ã¡udio imediatamente.
-2. SalvarÃ¡ a transcriÃ§Ã£o bruta (com as tags [VocÃª]/[Outros]) na pasta ./transcricoes/ como um arquivo .txt.
-3. InvocarÃ¡ o seu LLM_PROVIDER escolhido (Ollama ou Gemini) para ler todo o arquivo e gerar um resumo profissional, salvando-o como .md na mesma pasta.
-4. ExibirÃ¡ uma notificaÃ§Ã£o visual na tela quando o resumo estiver pronto e encerrarÃ¡.
+### ⌨️ Atalhos da Interface
+- **`Ctrl+L`**: Limpa a tela de transcrição (não apaga os dados salvos).
+- **`F1`**: Abre o menu de Ajuda interativo.
+- **`Ctrl+S` ou `Ctrl+C`**: Salva e encerra.
 
 ---
 
-## ðŸ—ï¸ Para Desenvolvedores (Arquitetura gy)
-Consulte o arquivo [CONTRIBUTING.md](CONTRIBUTING.md) para detalhes da arquitetura, como rodar a suÃ­te de testes (uv run pytest tests/) e como estender as bibliotecas nativas gy_tui (interface) e gy_voice (STT e IA).
+## 🏗️ Para Desenvolvedores
+Quer contribuir? O AtaFlow possui uma arquitetura altamente modular e desacoplada baseada no ecossistema `Agy`. 
+
+Consulte o arquivo [CONTRIBUTING.md](CONTRIBUTING.md) para explorar a arquitetura, entender o *Strategy Pattern* utilizado no processamento de voz (`agy_voice`), o design da TUI (`agy_tui`), e como rodar nossa suíte de testes automáticos.
