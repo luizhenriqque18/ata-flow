@@ -6,7 +6,13 @@ construidos sobre o framework Textual.
 """
 from agy_tui.app import AgyApp
 from agy_tui.components import TranscriptionLog, ServiceStatusBar, DeviceSelector
-from agy_tui.screens import DeviceSetupScreen, DeviceSelection
+from agy_tui.screens import (
+    DeviceSetupScreen,
+    DeviceSelection,
+    DashboardScreen,
+    ModelSelectionModal,
+    SummaryViewerScreen,
+)
 
 __all__ = [
     "AgyApp",
@@ -15,5 +21,8 @@ __all__ = [
     "DeviceSelector",
     "DeviceSetupScreen",
     "DeviceSelection",
+    "DashboardScreen",
+    "ModelSelectionModal",
+    "SummaryViewerScreen",
 ]
-__version__ = "0.1.0"
+__version__ = "0.2.0"

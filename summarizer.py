@@ -104,10 +104,10 @@ class OllamaSummarizer:
                 return r.json().get("response", "Erro: Resposta vazia da IA.")
         except httpx.HTTPStatusError as exc:
             logger.error(f"Erro HTTP Ollama: {exc}")
-            return f"Erro na API do Ollama: {exc.response.status_code}"
+            raise RuntimeError(f"Erro na API do Ollama: {exc.response.status_code}")
         except Exception as exc:
             logger.error(f"Erro ao chamar Ollama: {exc}")
-            return f"Erro interno ao gerar o resumo: {exc}"
+            raise RuntimeError(f"Erro interno ao gerar o resumo: {exc}")
 
 
 # ======================================================================
@@ -226,10 +226,10 @@ class GeminiSummarizer:
                 return result
         except httpx.HTTPStatusError as exc:
             logger.error(f"Erro HTTP Gemini {exc.response.status_code}: {exc.response.text[:200]}")
-            return f"Erro na API do Gemini: {exc.response.status_code}"
+            raise RuntimeError(f"Erro na API do Gemini: {exc.response.status_code}")
         except Exception as exc:
             logger.error(f"Erro ao chamar Gemini: {exc}")
-            return f"Erro interno ao gerar resumo via Gemini: {exc}"
+            raise RuntimeError(f"Erro interno ao gerar resumo via Gemini: {exc}")
 
 
 # ======================================================================

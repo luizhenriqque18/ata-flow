@@ -1,11 +1,17 @@
 """
-Ponto de entrada do Transcritor Local CLI.
+Ponto de entrada do AtaFlow 2.0.
 
 Fluxo de execucao:
-  1. Detecta os dispositivos de audio disponiveis
-  2. Exibe DeviceSetupScreen para o usuario escolher mic e loopback
-  3. Inicia o TranscriberApp com os dispositivos selecionados
-  4. Ao encerrar (Ctrl+C ou Ctrl+S), gera o resumo LLM automaticamente
+  1. AtaFlowApp inicia e empurra o DashboardScreen.
+  2. Dashboard: usuario clica em "Nova Gravacao" -> empurra DeviceSetupScreen.
+  3. Apos selecionar dispositivos -> empurra TranscriberScreen.
+  4. Ctrl+S encerra a gravacao -> empurra ModelSelectionModal.
+  5. Apos confirmar modelo -> gera resumo em background.
+  6. Retorna ao DashboardScreen, que atualiza a lista automaticamente.
+
+  Resumo pendente (clicado no Dashboard):
+  - Dashboard detecta a linha pendente e emite SummarizePending.
+  - App empurra ModelSelectionModal -> gera resumo -> volta ao Dashboard.
 """
 from __future__ import annotations
 
@@ -18,11 +24,19 @@ import sys
 from dotenv import load_dotenv
 from textual.app import ComposeResult
 from textual.binding import Binding
-from textual.widgets import Footer, Header, Static
+from textual.message import Message
+from textual.screen import Screen
+from textual.widgets import Footer, Header
 
 from agy_tui.app import AgyApp
 from agy_tui.components import DeviceSelector, ServiceStatusBar, TranscriptionLog
-from agy_tui.screens import DeviceSelection, DeviceSetupScreen
+from agy_tui.screens import (
+    DashboardScreen,
+    DeviceSelection,
+    DeviceSetupScreen,
+    ModelSelectionModal,
+    SummaryViewerScreen,
+)
 from audio_capture import AudioCapture
 from agy_voice.stt import WhisperLocalSTT
 from session_manager import SessionManager
@@ -39,17 +53,19 @@ logger = logging.getLogger("main")
 
 
 # ======================================================================
-# App principal de transcricao
+# Tela de Transcricao
 # ======================================================================
 
-class TranscriberApp(AgyApp):
-    """Aplicacao principal de transcricao de reunioes."""
+class TranscriberScreen(Screen[str | None]):
+    """
+    Tela de transcricao ativa de reuniao.
+    Retorna o caminho do arquivo de saida ao encerrar (Ctrl+S), ou None.
+    """
 
-    TITLE = "AtaFlow"
+    TITLE = "AtaFlow -- Gravando"
     SUB_TITLE = "Ctrl+S para encerrar e gerar resumo"
 
     BINDINGS = [
-        *AgyApp.BINDINGS,
         Binding("ctrl+s", "stop_session", "Encerrar e Resumir", show=True),
     ]
 
@@ -57,20 +73,13 @@ class TranscriberApp(AgyApp):
         super().__init__()
         self.args = args
         self.selection = selection
-        stt = WhisperLocalSTT(
-            model_size=args.model,
-            language=args.lang,
-        )
+        stt = WhisperLocalSTT(model_size=args.model, language=args.lang)
         self.session = SessionManager(
             chunk_duration=args.chunk,
             overlap=args.overlap,
             stt=stt,
         )
         self._stopping = False
-
-    # ------------------------------------------------------------------
-    # Layout
-    # ------------------------------------------------------------------
 
     def compose(self) -> ComposeResult:
         yield Header()
@@ -79,12 +88,7 @@ class TranscriberApp(AgyApp):
         yield ServiceStatusBar(id="status")
         yield Footer()
 
-    # ------------------------------------------------------------------
-    # Ciclo de vida
-    # ------------------------------------------------------------------
-
     async def on_mount(self) -> None:
-        # Exibe dispositivos selecionados no widget
         devices_widget = self.query_one(DeviceSelector)
         devices_widget.set_devices(self.selection.mic_name, self.selection.sys_name)
 
@@ -93,7 +97,7 @@ class TranscriberApp(AgyApp):
         status.update_audio("aguardando")
         status.update_llm("inativo")
 
-        self.notify(
+        self.app.notify(
             f"Mic: {self.selection.mic_name}\nSistema: {self.selection.sys_name}",
             title="Dispositivos Ativos",
         )
@@ -108,8 +112,8 @@ class TranscriberApp(AgyApp):
         )
 
         if not ok:
-            self.notify("Falha ao iniciar sessao. Verifique os logs.", severity="error")
-            await self.action_quit()
+            self.app.notify("Falha ao iniciar sessao. Verifique os logs.", severity="error")
+            self.dismiss(None)
             return
 
         status.update_whisper("carregado")
@@ -129,96 +133,191 @@ class TranscriberApp(AgyApp):
             except asyncio.TimeoutError:
                 continue
 
-    # ------------------------------------------------------------------
-    # Acoes
-    # ------------------------------------------------------------------
-
     async def action_stop_session(self) -> None:
         if self._stopping:
             return
         self._stopping = True
-        await self._finalize()
 
-    async def action_quit(self) -> None:
-        if not self._stopping:
-            self._stopping = True
-            await self._finalize()
-        self.exit()
-
-    async def _finalize(self) -> None:
         status = self.query_one(ServiceStatusBar)
         status.update_audio("parado")
         self.session.stop()
-        self.notify(f"Transcricao salva em:\n{self.session.output_file}", title="Sessao Encerrada")
-
-        provider = self.args.provider
-        summarizer = SummarizerFactory.get_summarizer(provider=provider)
-
-        if provider == "gemini":
-            if not summarizer.is_available():
-                self.notify("GEMINI_API_KEY nao configurada. Resumo ignorado.", severity="warning")
-                return
-            status.update_llm("verificando")
-            ok, stable_model = await summarizer.verify_and_fallback()
-            if not ok:
-                self.notify("Nenhum modelo Gemini disponivel.", severity="error")
-                return
-            summarizer.model_name = stable_model
-
-        status.update_llm("gerando")
-        self.notify(f"Gerando resumo com {provider.upper()}...", title="LLM")
-
-        try:
-            with open(self.session.output_file, encoding="utf-8") as f:
-                full_text = f.read()
-            summary = await summarizer.summarize(full_text)
-            summary_file = self.session.output_file.replace(".txt", "-resumo.md")
-            with open(summary_file, "w", encoding="utf-8") as f:
-                f.write(summary)
-            status.update_llm("pronto")
-            self.notify(f"Resumo salvo:\n{summary_file}", title="Resumo Gerado")
-        except Exception as exc:
-            logger.error(f"Erro ao gerar resumo: {exc}")
-            self.notify(f"Erro: {exc}", severity="error")
+        self.app.notify(
+            f"Transcricao salva em:\n{self.session.output_file}",
+            title="Sessao Encerrada",
+        )
+        # Retorna o caminho para o App orquestrar a geracao de resumo
+        self.dismiss(self.session.output_file)
 
 
 # ======================================================================
-# App de selecao de dispositivos (ponto de entrada unificado)
+# App Principal
 # ======================================================================
 
-class LauncherApp(AgyApp):
+class AtaFlowApp(AgyApp):
     """
-    App de entrada que gerencia a selecao de dispositivos e o launch
-    da sessao de transcricao, tudo no mesmo terminal.
+    App central do AtaFlow 2.0.
+
+    Orquestra a navegacao entre telas usando o sistema de Screen do Textual.
+    Sempre retorna ao DashboardScreen apos qualquer acao concluida.
     """
 
-    TITLE = "AtaFlow — Setup"
+    TITLE = "AtaFlow"
+    SUB_TITLE = "Gerenciador de Atas"
 
-    def __init__(self, args: argparse.Namespace, devices: dict) -> None:
+    # ------------------------------------------------------------------
+    # Mensagens internas (comunicacao entre telas e o App)
+    # ------------------------------------------------------------------
+
+    class StartNewRecording(Message):
+        """Emitida pelo Dashboard para iniciar o fluxo de nova gravacao."""
+
+    class SummarizePending(Message):
+        """Emitida pelo Dashboard para reprocessar uma transcricao pendente."""
+        def __init__(self, file_path: str) -> None:
+            super().__init__()
+            self.file_path = file_path
+
+    class ViewSummary(Message):
+        """Emitida pelo Dashboard para visualizar o resumo Markdown gerado."""
+        def __init__(self, file_path: str) -> None:
+            super().__init__()
+            self.file_path = file_path
+
+    # ------------------------------------------------------------------
+
+    def __init__(
+        self,
+        args: argparse.Namespace,
+        devices: dict,
+        initial_selection: DeviceSelection | None = None,
+    ) -> None:
         super().__init__()
         self.args = args
         self._devices = devices
+        self.initial_selection = initial_selection
 
     def compose(self) -> ComposeResult:
-        # Tela de setup sera exibida via push_screen no on_mount
-        yield Header()
-        yield Static("")
-        yield Footer()
+        # O compose do App fica vazio: as Screens cuidam de Header/Footer.
+        return []
 
     async def on_mount(self) -> None:
-        """Abre a tela de selecao de dispositivos imediatamente."""
-        def on_selection(selection: DeviceSelection | None) -> None:
-            if selection is None:
-                # Usuario saiu sem confirmar
-                self.exit()
-                return
-            # Troca para o app de transcricao no mesmo terminal
-            self.exit(result=selection)
+        if self.initial_selection:
+            # Modo rapido via CLI (--mic-index / --sys-index): pula direto para gravacao.
+            # O Dashboard e empurrado primeiro para que haja tela para voltar.
+            await self.push_screen(DashboardScreen())
+            await self.push_screen(
+                TranscriberScreen(self.args, self.initial_selection),
+                self._on_transcriber_done,
+            )
+        else:
+            await self.push_screen(DashboardScreen())
 
-        await self.push_screen(
-            DeviceSetupScreen(self._devices),
-            callback=on_selection,
+    # ------------------------------------------------------------------
+    # Handlers de mensagens do Dashboard
+    # ------------------------------------------------------------------
+
+    def on_ata_flow_app_start_new_recording(self, _: StartNewRecording) -> None:
+        """Abre a tela de selecao de dispositivos de audio."""
+        self.push_screen(DeviceSetupScreen(self._devices), self._on_device_selected)
+
+    def on_ata_flow_app_summarize_pending(self, msg: SummarizePending) -> None:
+        """Abre o modal de selecao de modelo para reprocessar transcricao pendente."""
+        file_path = msg.file_path
+        self.push_screen(
+            ModelSelectionModal(self.args.provider),
+            lambda res: self.run_worker(
+                self._handle_model_selection(res, file_path),
+                exclusive=False,
+                group="summarize",
+            ),
         )
+
+    def on_ata_flow_app_view_summary(self, msg: ViewSummary) -> None:
+        """Abre a tela de visualizacao de Markdown."""
+        self.push_screen(SummaryViewerScreen(file_path=msg.file_path))
+
+    # ------------------------------------------------------------------
+    # Callbacks de navegacao (sempre retornam ao Dashboard)
+    # ------------------------------------------------------------------
+
+    def _on_device_selected(self, selection: DeviceSelection | None) -> None:
+        """Chamado apos DeviceSetupScreen. Inicia gravacao ou volta ao Dashboard."""
+        if selection:
+            self.push_screen(TranscriberScreen(self.args, selection), self._on_transcriber_done)
+        # Se None (usuario cancelou), simplesmente fica no Dashboard.
+
+    def _on_transcriber_done(self, output_file: str | None) -> None:
+        """
+        Chamado ao encerrar a gravacao.
+        Se ha arquivo de saida, abre o modal de selecao de modelo.
+        Caso contrario (falha), retorna ao Dashboard e atualiza a lista.
+        """
+        if output_file:
+            self.push_screen(
+                ModelSelectionModal(self.args.provider),
+                lambda res: self.run_worker(
+                    self._handle_model_selection(res, output_file),
+                    exclusive=False,
+                    group="summarize",
+                ),
+            )
+        else:
+            self._refresh_dashboard()
+
+    async def _handle_model_selection(
+        self, res: tuple[str, str] | None, file_path: str
+    ) -> None:
+        """
+        Chamado apos ModelSelectionModal.
+        Gera o resumo e, independente do resultado, volta ao Dashboard.
+        """
+        if res:
+            provider, model = res
+            await self._generate_summary(file_path, provider, model)
+        else:
+            self.notify("Geracao de resumo cancelada.", severity="information")
+
+        self._refresh_dashboard()
+
+    # ------------------------------------------------------------------
+    # Geracao de resumo
+    # ------------------------------------------------------------------
+
+    async def _generate_summary(self, file_path: str, provider: str, model: str) -> None:
+        """Chama o summarizer e salva o resultado. Em caso de erro, nao cria o arquivo."""
+        self.notify(f"Gerando resumo com {provider.upper()} ({model})...", title="LLM")
+        summarizer = SummarizerFactory.get_summarizer(provider=provider, model_name=model)
+        try:
+            with open(file_path, encoding="utf-8") as f:
+                full_text = f.read()
+            summary = await summarizer.summarize(full_text)
+            summary_file = file_path.replace(".txt", "-resumo.md")
+            with open(summary_file, "w", encoding="utf-8") as f:
+                f.write(summary)
+            self.notify(f"Resumo salvo:\n{summary_file}", title="Resumo Gerado")
+        except Exception as exc:
+            logger.error(f"Erro ao gerar resumo: {exc}")
+            self.notify(
+                f"Erro ao gerar resumo: {exc}\nA transcricao permanece como pendente.",
+                severity="error",
+                timeout=8,
+            )
+
+    # ------------------------------------------------------------------
+    # Utilitarios
+    # ------------------------------------------------------------------
+
+    def _refresh_dashboard(self) -> None:
+        """
+        Garante que o DashboardScreen esta no topo da pilha e
+        atualiza sua lista de transcricoes.
+        """
+        # Pop todas as telas ate chegar ao DashboardScreen
+        while self.screen_stack and not isinstance(self.screen, DashboardScreen):
+            self.pop_screen()
+
+        if isinstance(self.screen, DashboardScreen):
+            self.screen.refresh_history()
 
 
 # ======================================================================
@@ -237,38 +336,38 @@ def parse_args() -> argparse.Namespace:
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=(
             "Exemplos:\n"
-            "  python main.py                        # selecao interativa de dispositivos\n"
+            "  python main.py                        # abre dashboard\n"
             "  python main.py --mic-index 1          # pula selecao de mic\n"
-            "  python main.py --provider gemini      # resumo via Gemini\n"
+            "  python main.py --provider gemini      # define provider padrao no modal\n"
             "  python main.py --list-devices         # lista dispositivos e sai\n"
             "  python main.py --list-llms            # lista modelos LLM e sai\n"
         ),
     )
-    p.add_argument("--model", default=default_model, help=f"Tamanho do modelo Whisper (default: {default_model})")
+    p.add_argument("--model", default=default_model)
     p.add_argument("--chunk", type=float, default=default_chunk)
     p.add_argument("--overlap", type=float, default=default_overlap)
-    p.add_argument("--lang", default=default_lang, help=f"Idioma (default: {default_lang})")
-    p.add_argument("--mic-index", type=int, default=None, help="Pular selecao: indice do microfone")
-    p.add_argument("--sys-index", type=int, default=None, help="Pular selecao: indice do loopback do sistema")
+    p.add_argument("--lang", default=default_lang)
+    p.add_argument("--mic-index", type=int, default=None)
+    p.add_argument("--sys-index", type=int, default=None)
     p.add_argument("--provider", choices=["ollama", "gemini"], default=default_provider)
-    p.add_argument("--list-devices", action="store_true", help="Lista dispositivos e sai")
-    p.add_argument("--list-llms", action="store_true", help="Lista modelos LLM do provedor e sai")
+    p.add_argument("--list-devices", action="store_true")
+    p.add_argument("--list-llms", action="store_true")
     return p.parse_args()
 
 
 async def _cmd_list_llms(args: argparse.Namespace) -> None:
     from rich.console import Console
     from rich.table import Table
+
     console = Console()
     if args.provider == "gemini":
         from summarizer import GeminiSummarizer
-        console.print("[bold cyan]Executando HealthCheck nos modelos Gemini...[/]")
-        models = await GeminiSummarizer.get_available_models(health_check=True)
+        console.print("[bold cyan]Buscando modelos Gemini...[/]")
+        models = await GeminiSummarizer().get_available_models()
         t = Table(show_header=True, header_style="bold magenta")
-        t.add_column("Modelo")
-        t.add_column("Status")
+        t.add_column("Modelo Gemini")
         for m in models:
-            t.add_row(m["name"], m["status"])
+            t.add_row(m)
     else:
         from summarizer import OllamaSummarizer
         models = await OllamaSummarizer.get_available_models()
@@ -282,6 +381,7 @@ async def _cmd_list_llms(args: argparse.Namespace) -> None:
 def _cmd_list_devices() -> None:
     from rich.console import Console
     from rich.table import Table
+
     console = Console()
     devices = AudioCapture.list_devices()
 
@@ -306,19 +406,12 @@ def _make_selection_from_args(
     args: argparse.Namespace,
     devices: dict,
 ) -> DeviceSelection | None:
-    """
-    Se --mic-index e --sys-index foram passados, cria uma DeviceSelection
-    diretamente sem abrir a tela de setup.
-    """
     if args.mic_index is None or args.sys_index is None:
         return None
-
     mic_info = next((d for d in devices["mics"] if d["index"] == args.mic_index), None)
     sys_info = next((d for d in devices["loopbacks"] if d["index"] == args.sys_index), None)
-
     if not mic_info or not sys_info:
         return None
-
     return DeviceSelection(
         mic_index=mic_info["index"],
         mic_name=mic_info["name"],
@@ -338,7 +431,6 @@ def run() -> None:
         asyncio.run(_cmd_list_llms(args))
         sys.exit(0)
 
-    # Detecta dispositivos antes de abrir qualquer TUI
     devices = AudioCapture.list_devices()
 
     if not devices["mics"] and not devices["loopbacks"]:
@@ -346,20 +438,8 @@ def run() -> None:
         Console().print("[bold red]Nenhum dispositivo de audio encontrado. Verifique os drivers.[/]")
         sys.exit(1)
 
-    # Verifica se args ja tem dispositivos definidos (modo rapido/CI)
     selection = _make_selection_from_args(args, devices)
-
-    if selection is None:
-        # Modo interativo: abre tela de selecao de dispositivos
-        launcher = LauncherApp(args, devices)
-        selection = launcher.run()
-
-    if selection is None:
-        # Usuario saiu da tela de setup sem confirmar
-        sys.exit(0)
-
-    # Inicia o app de transcricao com os dispositivos escolhidos
-    TranscriberApp(args, selection).run()
+    AtaFlowApp(args, devices, selection).run()
 
 
 if __name__ == "__main__":
