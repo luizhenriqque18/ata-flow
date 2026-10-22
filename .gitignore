@@ -12,3 +12,7 @@ transcricoes/
 dist/
 *.egg-info/
 config.json
+
+model_preferences.json
+.uv-cache/
+.pytest_*/

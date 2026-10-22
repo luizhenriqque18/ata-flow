@@ -41,7 +41,7 @@ uv run pytest tests/agy_voice/ -v
 
 ## Linting e Formatacao
 
-Este projeto usa uff para lint e formatacao:
+Este projeto usa Ruff para lint e formatacao:
 
 `powershell
 # Verificar problemas
@@ -61,7 +61,7 @@ ataflow/
 |-- main.py                   # Ponto de entrada: App Textual
 |-- audio_capture.py          # Captura WASAPI (microfone + sistema)
 |-- session_manager.py        # Orquestra audio -> STT -> arquivo
-|-- summarizer.py             # Resumo LLM (Ollama / Gemini)
+|-- summarizer.py             # Resumo LLM (Gemini)
 |
 |-- agy_tui/                  # Biblioteca TUI (reutilizavel em outras ferramentas)
 |   |-- app.py                # Classe base AgyApp (herda de textual.App)
@@ -116,3 +116,22 @@ class MeuSTT(STTStrategy):
 
 Veja .env.example para a lista completa de configuracoes disponiveis.
 NUNCA faca commit do arquivo .env — ele ja esta no .gitignore.
+
+
+## Catálogo e preferências de modelos
+
+- `model_catalog.py`: catálogo Gemini paginado, teste de geração textual e armazenamento
+  atômico de preferências em `model_preferences.json` (ignorado pelo Git).
+- `agy_tui/model_manager.py`: tela com catálogo, favoritos e modelo padrão, além do modal
+  de escolha utilizado na geração de atas. Workers mantêm a interface responsiva.
+- `summarizer.py`: geração das atas pelo mesmo cliente utilizado nos testes dos modelos.
+- Testes usam `httpx.MockTransport` e o Pilot do Textual, sem chamadas reais à API.
+
+Validação específica:
+
+```powershell
+uv run pytest tests/test_model_catalog.py tests/agy_tui/test_model_manager.py
+```
+
+Não salve credenciais no arquivo de preferências nem em mensagens persistidas dos testes.
+O Ollama não é mais suportado para geração de atas; configurações antigas dele são ignoradas.

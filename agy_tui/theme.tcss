@@ -42,21 +42,43 @@ Footer {
 
 /* --- Botoes --- */
 Button {
-    background: $agy-primary 80%;
-    color: $background;
-    border: none;
+    background: $surface-lighten-1;
+    color: $text;
+    border: tall transparent;
 }
 
 Button:hover {
+    background: $surface-lighten-2;
+}
+
+Button:focus {
+    border: tall $agy-primary;
+    text-style: bold;
+}
+
+Button.-primary, Button.-success {
+    background: $agy-primary 80%;
+    color: $background;
+}
+
+Button.-primary:hover, Button.-success:hover {
     background: $agy-primary;
 }
 
-Button.-danger {
+Button.-error {
     background: $agy-danger 80%;
+    color: $background;
 }
 
-Button.-danger:hover {
+Button.-error:hover {
     background: $agy-danger;
+}
+
+Button:disabled {
+    background: $surface;
+    color: $text-disabled;
+    border: tall transparent;
+    text-style: none;
 }
 
 /* --- Input --- */

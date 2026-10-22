@@ -13,6 +13,7 @@ Fluxo de execucao:
   - Dashboard detecta a linha pendente e emite SummarizePending.
   - App empurra ModelSelectionModal -> gera resumo -> volta ao Dashboard.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -30,6 +31,7 @@ from textual.widgets import Footer, Header
 
 from agy_tui.app import AgyApp
 from agy_tui.components import DeviceSelector, ServiceStatusBar, TranscriptionLog
+from agy_tui.model_manager import ModelManagerScreen
 from agy_tui.screens import (
     DashboardScreen,
     DeviceSelection,
@@ -37,8 +39,8 @@ from agy_tui.screens import (
     ModelSelectionModal,
     SummaryViewerScreen,
 )
-from audio_capture import AudioCapture
 from agy_voice.stt import WhisperLocalSTT
+from audio_capture import AudioCapture
 from session_manager import SessionManager
 from summarizer import SummarizerFactory
 
@@ -55,6 +57,7 @@ logger = logging.getLogger("main")
 # ======================================================================
 # Tela de Transcricao
 # ======================================================================
+
 
 class TranscriberScreen(Screen[str | None]):
     """
@@ -130,7 +133,7 @@ class TranscriberScreen(Screen[str | None]):
                 event = await asyncio.wait_for(self.session.session_events.get(), timeout=0.5)
                 if event["type"] == "transcription":
                     log.add_transcription(event["text"].strip())
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 continue
 
     async def action_stop_session(self) -> None:
@@ -153,6 +156,7 @@ class TranscriberScreen(Screen[str | None]):
 # App Principal
 # ======================================================================
 
+
 class AtaFlowApp(AgyApp):
     """
     App central do AtaFlow 2.0.
@@ -168,17 +172,22 @@ class AtaFlowApp(AgyApp):
     # Mensagens internas (comunicacao entre telas e o App)
     # ------------------------------------------------------------------
 
+    class ManageModels(Message):
+        """Abre o gerenciador de modelos Gemini."""
+
     class StartNewRecording(Message):
         """Emitida pelo Dashboard para iniciar o fluxo de nova gravacao."""
 
     class SummarizePending(Message):
         """Emitida pelo Dashboard para reprocessar uma transcricao pendente."""
+
         def __init__(self, file_path: str) -> None:
             super().__init__()
             self.file_path = file_path
 
     class ViewSummary(Message):
         """Emitida pelo Dashboard para visualizar o resumo Markdown gerado."""
+
         def __init__(self, file_path: str) -> None:
             super().__init__()
             self.file_path = file_path
@@ -215,6 +224,12 @@ class AtaFlowApp(AgyApp):
     # ------------------------------------------------------------------
     # Handlers de mensagens do Dashboard
     # ------------------------------------------------------------------
+
+    def on_ata_flow_app_manage_models(self, _: ManageModels) -> None:
+        try:
+            self.push_screen(ModelManagerScreen())
+        except (ValueError, OSError):
+            self.notify("Preferências inválidas; arquivo preservado.", severity="error")
 
     def on_ata_flow_app_start_new_recording(self, _: StartNewRecording) -> None:
         """Abre a tela de selecao de dispositivos de audio."""
@@ -264,9 +279,7 @@ class AtaFlowApp(AgyApp):
         else:
             self._refresh_dashboard()
 
-    async def _handle_model_selection(
-        self, res: tuple[str, str] | None, file_path: str
-    ) -> None:
+    async def _handle_model_selection(self, res: tuple[str, str] | None, file_path: str) -> None:
         """
         Chamado apos ModelSelectionModal.
         Gera o resumo e, independente do resultado, volta ao Dashboard.
@@ -324,8 +337,9 @@ class AtaFlowApp(AgyApp):
 # CLI
 # ======================================================================
 
+
 def parse_args() -> argparse.Namespace:
-    default_provider = os.environ.get("LLM_PROVIDER", "ollama")
+    default_provider = "gemini"
     default_model = os.environ.get("WHISPER_MODEL_SIZE", "small")
     default_lang = os.environ.get("WHISPER_LANGUAGE", "pt")
     default_chunk = float(os.environ.get("AUDIO_CHUNK_DURATION", "10.0"))
@@ -338,7 +352,7 @@ def parse_args() -> argparse.Namespace:
             "Exemplos:\n"
             "  python main.py                        # abre dashboard\n"
             "  python main.py --mic-index 1          # pula selecao de mic\n"
-            "  python main.py --provider gemini      # define provider padrao no modal\n"
+            "  python main.py --provider gemini      # provedor Gemini (unico suportado)\n"
             "  python main.py --list-devices         # lista dispositivos e sai\n"
             "  python main.py --list-llms            # lista modelos LLM e sai\n"
         ),
@@ -349,7 +363,7 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--lang", default=default_lang)
     p.add_argument("--mic-index", type=int, default=None)
     p.add_argument("--sys-index", type=int, default=None)
-    p.add_argument("--provider", choices=["ollama", "gemini"], default=default_provider)
+    p.add_argument("--provider", choices=["gemini"], default=default_provider)
     p.add_argument("--list-devices", action="store_true")
     p.add_argument("--list-llms", action="store_true")
     return p.parse_args()
@@ -360,21 +374,14 @@ async def _cmd_list_llms(args: argparse.Namespace) -> None:
     from rich.table import Table
 
     console = Console()
-    if args.provider == "gemini":
-        from summarizer import GeminiSummarizer
-        console.print("[bold cyan]Buscando modelos Gemini...[/]")
-        models = await GeminiSummarizer().get_available_models()
-        t = Table(show_header=True, header_style="bold magenta")
-        t.add_column("Modelo Gemini")
-        for m in models:
-            t.add_row(m)
-    else:
-        from summarizer import OllamaSummarizer
-        models = await OllamaSummarizer.get_available_models()
-        t = Table(show_header=True, header_style="bold magenta")
-        t.add_column("Modelo Ollama")
-        for m in models:
-            t.add_row(m)
+    from summarizer import GeminiSummarizer
+
+    console.print("[bold cyan]Buscando modelos Gemini...[/]")
+    models = await GeminiSummarizer().get_available_models()
+    t = Table(show_header=True, header_style="bold magenta")
+    t.add_column("Modelo Gemini")
+    for model in models:
+        t.add_row(model)
     console.print(t)
 
 
@@ -435,7 +442,10 @@ def run() -> None:
 
     if not devices["mics"] and not devices["loopbacks"]:
         from rich.console import Console
-        Console().print("[bold red]Nenhum dispositivo de audio encontrado. Verifique os drivers.[/]")
+
+        Console().print(
+            "[bold red]Nenhum dispositivo de audio encontrado. Verifique os drivers.[/]"
+        )
         sys.exit(1)
 
     selection = _make_selection_from_args(args, devices)

@@ -1,7 +1,7 @@
 # 🎙️ AtaFlow (v0.2)
-**O seu assistente pessoal e 100% privado para transformar reuniões em atas perfeitas.**
+**Transcrição local de reuniões e geração de atas com Gemini.**
 
-O **AtaFlow** é uma ferramenta de linha de comando com uma **Interface Gráfica no Terminal (TUI)** incrivelmente fluida, desenvolvida em Python. Ele escuta simultaneamente o seu microfone e o áudio do sistema (colegas de trabalho, vídeos, apresentações) e gera uma transcrição em tempo real, operando **100% offline** na sua máquina para garantir privacidade absoluta.
+O **AtaFlow** é uma ferramenta de linha de comando com uma **Interface Gráfica no Terminal (TUI)** incrivelmente fluida, desenvolvida em Python. Ele escuta simultaneamente o seu microfone e o áudio do sistema (colegas de trabalho, vídeos, apresentações) e gera uma transcrição em tempo real, transcrevendo localmente na sua máquina. A geração de atas usa o Gemini e envia a transcrição textual ao Google.
 
 Diga adeus ao trabalho manual de anotar tudo durante as calls!
 
@@ -11,8 +11,8 @@ Diga adeus ao trabalho manual de anotar tudo durante as calls!
 
 - **🖥️ Interface Visual de Terminal (TUI):** Navegue com facilidade. Esqueça a configuração manual de índices de áudio — basta abrir o app e selecionar seus dispositivos com as setas do teclado.
 - **🗣️ Diarização Automática:** O sistema identifica e rotula automaticamente quem está falando com as tags `[Você]`, `[Outros]` ou `[Você + Outros]`.
-- **🧠 Resumos Inteligentes com IA:** Ao final da reunião, gera uma ata profissional e estruturada em Markdown, destacando pontos principais e decisões. Suporta IA local (**Ollama**) ou em nuvem (**Gemini**).
-- **🔒 Privacidade e Performance:** Transcrição feita localmente com o motor **Faster-Whisper** (com suporte à aceleração CUDA para placas NVIDIA). Ninguém ouve suas reuniões além de você.
+- **🧠 Resumos Inteligentes com IA:** Ao final da reunião, gera uma ata profissional e estruturada em Markdown, destacando pontos principais e decisões. Usa o **Gemini**, com catálogo, favoritos e escolha de modelo padrão pela interface.
+- **🔒 Privacidade e Performance:** Transcrição feita localmente com o motor **Faster-Whisper** (com suporte à aceleração CUDA para placas NVIDIA). O áudio é processado localmente; a transcrição textual é enviada ao Gemini quando você solicita uma ata.
 - **🎛️ Processamento de Áudio Avançado:** Faz o *downmix* (Estéreo -> Mono) e *resample* (para 16kHz) nativamente para garantir a precisão máxima do Whisper e evitar alucinações da IA.
 
 ---
@@ -35,7 +35,7 @@ Copie o template de configurações e ajuste conforme necessário:
 ```powershell
 copy .env.example .env
 ```
-*(No arquivo `.env`, você pode definir o idioma padrão, escolher entre Gemini/Ollama, etc).*
+*(No arquivo `.env`, você pode definir o idioma padrão, configurar a chave Gemini e o modelo inicial, etc).*
 
 ### 3. Habilitar Aceleração (Apenas Placas NVIDIA)
 Para processar o áudio com a sua placa de vídeo (como uma RTX ou GTX), instale as bibliotecas NVIDIA essenciais:
@@ -44,19 +44,35 @@ Para processar o áudio com a sua placa de vídeo (como uma RTX ou GTX), instale
 uv pip install nvidia-cublas-cu12 nvidia-cudnn-cu12
 ```
 
-### 4. Escolher o Motor de IA para os Resumos
+### 4. Configurar o Gemini
 
-**Modo Ninja (100% Offline com Ollama)**
-1. Instale o [Ollama para Windows](https://ollama.com/).
-2. Baixe o modelo: `ollama run llama3.2:1b`
-3. No seu `.env`, defina `LLM_PROVIDER=ollama`
+Defina `GEMINI_API_KEY` no `.env`. O Gemini é o único provedor de atas suportado.
+As antigas variáveis `LLM_PROVIDER` e `OLLAMA_DEFAULT_MODEL` não são mais utilizadas.
 
-**Modo Nuvem (Máxima Qualidade com Google Gemini)**
-1. No seu `.env`, configure:
-```env
-GEMINI_API_KEY=sua_chave_aqui
-LLM_PROVIDER=gemini
-```
+Antes de configurar seus favoritos, `GEMINI_DEFAULT_MODEL` define a sugestão inicial.
+Depois, o padrão salvo na interface tem prioridade.
+
+### 5. Gerenciar modelos
+
+Abra **Gerenciar modelos** no painel inicial ou na janela de geração de atas.
+
+- À esquerda: catálogo completo retornado pelo Gemini, com busca, filtro de versão e de status.
+- À direita: seus favoritos; selecione um e clique **Definir padrão** para marcá-lo com ★.
+- Modelos especializados ou sem suporte à geração de texto aparecem como incompatíveis.
+- **Testar selecionado** verifica um modelo; **Testar todos** verifica todos os compatíveis,
+  independentemente dos filtros. Os testes usam texto sintético e podem consumir cota da API.
+- Veja o último resultado, código HTTP, horário em UTC e duração nos detalhes do modelo.
+- Os testes são sequenciais, podem ser interrompidos e param ao receber HTTP 429.
+- Clique **Salvar** para manter favoritos, padrão, catálogo e resultados dos testes.
+  **Cancelar** descarta as alterações feitas nessa tela.
+
+As preferências ficam em `model_preferences.json`, ignorado pelo Git, sem chaves de API.
+A listagem não executa testes de geração automaticamente. Um resultado de disponibilidade
+reflete somente o último teste; não garante a próxima geração nem avalia a qualidade da ata.
+
+Em **Modelo escolhido**, seus favoritos são exibidos com o padrão pré-selecionado.
+Escolher outro modelo para uma ata não muda o padrão salvo. Se o padrão desaparecer
+do catálogo, escolha outro explicitamente ou atualize suas preferências.
 
 ---
 
@@ -75,8 +91,8 @@ uv run python main.py
 3. **Encerrando a Call:** Acabou a reunião? Pressione **`Ctrl + S`**. 
    - O AtaFlow interrompe a gravação.
    - Salva a transcrição bruta na pasta `./transcricoes/`.
-   - Aciona a IA (Ollama ou Gemini) para ler a conversa e cuspir uma **Ata Profissional em Markdown**.
-   - Você é notificado e o app encerra sozinho.
+   - Abre a escolha do modelo Gemini e, após confirmar, aciona a IA para ler a conversa e cuspir uma **Ata Profissional em Markdown**.
+   - Você é notificado e retorna ao painel, onde pode abrir a ata ou gerar resumos pendentes.
 
 ### ⌨️ Atalhos da Interface
 - **`Ctrl+L`**: Limpa a tela de transcrição (não apaga os dados salvos).

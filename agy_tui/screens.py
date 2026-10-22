@@ -1,4 +1,4 @@
-﻿"""
+"""
 Telas (Screens) reutilizaveis da plataforma agy_tui.
 
 Telas disponiveis:
@@ -7,9 +7,9 @@ Telas disponiveis:
   - DashboardScreen      : tela inicial com historico e acoes
   - SummaryViewerScreen  : visualizacao de resumo em Markdown
 """
+
 from __future__ import annotations
 
-import os
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -17,7 +17,7 @@ from textual import on
 from textual.app import ComposeResult
 from textual.binding import Binding
 from textual.containers import Container, Horizontal, Vertical
-from textual.screen import ModalScreen, Screen
+from textual.screen import Screen
 from textual.widgets import (
     Button,
     DataTable,
@@ -25,20 +25,20 @@ from textual.widgets import (
     Header,
     Label,
     MarkdownViewer,
-    Select,
     Static,
 )
 
-from summarizer import GeminiSummarizer, OllamaSummarizer
-
+from agy_tui.model_manager import ModelSelectionModal as ModelSelectionModal
 
 # ======================================================================
 # Dataclass compartilhado
 # ======================================================================
 
+
 @dataclass
 class DeviceSelection:
     """Resultado da selecao de dispositivos pelo usuario."""
+
     mic_index: int | None
     mic_name: str
     sys_index: int | None
@@ -48,6 +48,7 @@ class DeviceSelection:
 # ======================================================================
 # Tela de selecao de dispositivos de audio
 # ======================================================================
+
 
 class DeviceSetupScreen(Screen[DeviceSelection | None]):
     """
@@ -153,14 +154,17 @@ class DeviceSetupScreen(Screen[DeviceSelection | None]):
         with Container(id="setup-container"):
             yield Static("[bold]AtaFlow[/bold] — Selecao de Dispositivos", id="setup-title")
             yield Static(
-                "Navegue com as [bold]Setas[/] e aperte [bold]Enter[/] para confirmar cada dispositivo.",
+                "Navegue com as [bold]Setas[/] e aperte [bold]Enter[/] "
+                "para confirmar cada dispositivo.",
                 id="setup-hint",
             )
             with Vertical(classes="device-section"):
                 yield Label("1. Microfone (sua voz):", classes="section-label")
                 yield DataTable(id="mic-table", cursor_type="row", zebra_stripes=True)
             with Vertical(classes="device-section"):
-                yield Label("2. Audio do Sistema (loopback — voz dos outros):", classes="section-label")
+                yield Label(
+                    "2. Audio do Sistema (loopback — voz dos outros):", classes="section-label"
+                )
                 yield DataTable(id="sys-table", cursor_type="row", zebra_stripes=True)
             yield Static("", id="selected-info")
             with Horizontal(id="btn-row"):
@@ -173,7 +177,9 @@ class DeviceSetupScreen(Screen[DeviceSelection | None]):
         mic_table.add_columns("Idx", "Nome", "Canais")
         for dev in self._devices.get("mics", []):
             mic_table.add_row(
-                str(dev["index"]), dev["name"], str(dev["maxInputChannels"]),
+                str(dev["index"]),
+                dev["name"],
+                str(dev["maxInputChannels"]),
                 key=str(dev["index"]),
             )
 
@@ -181,7 +187,9 @@ class DeviceSetupScreen(Screen[DeviceSelection | None]):
         sys_table.add_columns("Idx", "Nome", "Canais")
         for dev in self._devices.get("loopbacks", []):
             sys_table.add_row(
-                str(dev["index"]), dev["name"], str(dev["maxInputChannels"]),
+                str(dev["index"]),
+                dev["name"],
+                str(dev["maxInputChannels"]),
                 key=str(dev["index"]),
             )
 
@@ -238,143 +246,9 @@ class DeviceSetupScreen(Screen[DeviceSelection | None]):
 
 
 # ======================================================================
-# Modal de selecao de Provider e Modelo LLM
-# ======================================================================
-
-class ModelSelectionModal(ModalScreen[tuple[str, str] | None]):
-    """
-    Modal para selecionar o Provedor de LLM e o Modelo.
-    Retorna (provider, model_name) ao confirmar, ou None ao cancelar.
-    """
-
-    DEFAULT_CSS = """
-    ModelSelectionModal {
-        align: center middle;
-        background: $background 50%;
-    }
-
-    #modal-container {
-        width: 66;
-        height: auto;
-        padding: 1 2;
-        border: round $primary;
-        background: $surface;
-    }
-
-    #modal-title {
-        text-align: center;
-        text-style: bold;
-        color: $primary;
-        margin-bottom: 1;
-    }
-
-    .modal-label {
-        margin-top: 1;
-        text-style: bold;
-    }
-
-    #loading-msg {
-        text-align: center;
-        color: $text-disabled;
-        margin-top: 1;
-    }
-
-    #modal-btn-row {
-        height: auto;
-        margin-top: 2;
-        align: center middle;
-    }
-
-    #modal-btn-row Button {
-        margin: 0 1;
-        min-width: 18;
-    }
-    """
-
-    BINDINGS = [
-        Binding("escape", "cancel", "Cancelar", show=True),
-    ]
-
-    def __init__(self, default_provider: str = "gemini") -> None:
-        super().__init__()
-        self.default_provider = default_provider
-
-    def compose(self) -> ComposeResult:
-        with Container(id="modal-container"):
-            yield Static("Selecione o Provedor e o Modelo", id="modal-title")
-            yield Label("Provedor:", classes="modal-label")
-            yield Select(
-                [("Gemini", "gemini"), ("Ollama", "ollama")],
-                id="select-provider",
-                value=self.default_provider,
-            )
-            yield Label("Modelo:", classes="modal-label")
-            yield Static("Carregando modelos...", id="loading-msg")
-            yield Select([], id="select-model")
-            with Horizontal(id="modal-btn-row"):
-                yield Button("Confirmar", id="btn-confirm", variant="success")
-                yield Button("Cancelar", id="btn-cancel", variant="error")
-
-    async def on_mount(self) -> None:
-        await self._load_models(self.default_provider)
-
-    @on(Select.Changed, "#select-provider")
-    async def on_provider_changed(self, event: Select.Changed) -> None:
-        if event.value and event.value != Select.BLANK:
-            await self._load_models(str(event.value))
-
-    async def _load_models(self, provider: str) -> None:
-        sel = self.query_one("#select-model", Select)
-        loading = self.query_one("#loading-msg", Static)
-
-        sel.set_options([])
-        sel.disabled = True
-        loading.update(f"Buscando modelos do {provider.upper()}...")
-        loading.display = True
-
-        models: list[str] = []
-        try:
-            if provider == "gemini":
-                models = await GeminiSummarizer().get_available_models()
-            else:
-                models = await OllamaSummarizer.get_available_models()
-        except Exception:
-            models = []
-
-        loading.display = False
-
-        if models:
-            sel.set_options([(m, m) for m in models])
-            sel.disabled = False
-            env_default = os.environ.get(f"{provider.upper()}_DEFAULT_MODEL", "")
-            sel.value = env_default if env_default in models else models[0]
-        else:
-            sel.set_options([("Nenhum modelo encontrado", Select.BLANK)])
-            self.app.notify(
-                f"Nenhum modelo disponivel para {provider.upper()}. Verifique a conexao/chave de API.",
-                severity="warning",
-            )
-
-    @on(Button.Pressed, "#btn-confirm")
-    def on_confirm(self) -> None:
-        provider_val = self.query_one("#select-provider", Select).value
-        model_val = self.query_one("#select-model", Select).value
-        if provider_val and model_val and model_val != Select.BLANK:
-            self.dismiss((str(provider_val), str(model_val)))
-        else:
-            self.app.notify("Selecione um provedor e um modelo validos.", severity="warning")
-
-    @on(Button.Pressed, "#btn-cancel")
-    def on_cancel(self) -> None:
-        self.dismiss(None)
-
-    def action_cancel(self) -> None:
-        self.dismiss(None)
-
-
-# ======================================================================
 # Dashboard Principal
 # ======================================================================
+
 
 class DashboardScreen(Screen):
     """
@@ -414,13 +288,9 @@ class DashboardScreen(Screen):
         margin-bottom: 1;
     }
 
-    #btn-new {
+    #left-pane Button {
         width: 100%;
         margin-bottom: 1;
-    }
-
-    #btn-refresh {
-        width: 100%;
     }
 
     #right-pane {
@@ -463,6 +333,7 @@ class DashboardScreen(Screen):
                 yield Static("Acoes", id="left-pane-title")
                 yield Button("Nova Gravacao", id="btn-new", variant="success")
                 yield Button("Atualizar Lista", id="btn-refresh")
+                yield Button("Gerenciar modelos", id="btn-models")
             with Vertical(id="right-pane"):
                 yield Static("[bold]Historico de Transcricoes[/bold]", id="right-pane-title")
                 yield Static("Nenhuma transcricao encontrada.", id="empty-msg")
@@ -510,6 +381,10 @@ class DashboardScreen(Screen):
         self.refresh_history()
         self.app.notify("Lista atualizada.")
 
+    @on(Button.Pressed, "#btn-models")
+    def on_btn_models(self) -> None:
+        self.app.post_message(self.app.ManageModels())
+
     @on(Button.Pressed, "#btn-new")
     def on_btn_new(self) -> None:
         self.app.post_message(self.app.StartNewRecording())
@@ -525,11 +400,10 @@ class DashboardScreen(Screen):
             self.app.post_message(self.app.ViewSummary(file_path=str(summary_path)))
 
 
-
-
 # ======================================================================
 # Visualizador de Resumo (Markdown)
 # ======================================================================
+
 
 class SummaryViewerScreen(Screen):
     """
@@ -613,4 +487,3 @@ class SummaryViewerScreen(Screen):
 
     def action_go_back(self) -> None:
         self.dismiss(None)
-
