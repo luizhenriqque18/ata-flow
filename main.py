@@ -31,6 +31,7 @@ from textual.widgets import Footer, Header
 
 from agy_tui.app import AgyApp
 from agy_tui.components import DeviceSelector, ServiceStatusBar, TranscriptionLog
+from agy_tui.mcp_manager import MCPManagerScreen
 from agy_tui.model_manager import ModelManagerScreen
 from agy_tui.screens import (
     DashboardScreen,
@@ -41,6 +42,7 @@ from agy_tui.screens import (
 )
 from agy_voice.stt import WhisperLocalSTT
 from audio_capture import AudioCapture
+from mcp_network import MCPHTTPService
 from session_manager import SessionManager
 from summarizer import SummarizerFactory
 
@@ -175,6 +177,9 @@ class AtaFlowApp(AgyApp):
     class ManageModels(Message):
         """Abre o gerenciador de modelos Gemini."""
 
+    class ManageMCP(Message):
+        """Abre as preferências do servidor MCP."""
+
     class StartNewRecording(Message):
         """Emitida pelo Dashboard para iniciar o fluxo de nova gravacao."""
 
@@ -204,6 +209,7 @@ class AtaFlowApp(AgyApp):
         self.args = args
         self._devices = devices
         self.initial_selection = initial_selection
+        self.mcp_http_service = MCPHTTPService()
 
     def compose(self) -> ComposeResult:
         # O compose do App fica vazio: as Screens cuidam de Header/Footer.
@@ -220,10 +226,23 @@ class AtaFlowApp(AgyApp):
             )
         else:
             await self.push_screen(DashboardScreen())
+        try:
+            await self.mcp_http_service.apply()
+        except (ValueError, OSError) as exc:
+            self.notify(f"Servidor MCP HTTP não iniciou: {exc}", severity="error")
+
+    async def on_unmount(self) -> None:
+        await self.mcp_http_service.stop()
 
     # ------------------------------------------------------------------
     # Handlers de mensagens do Dashboard
     # ------------------------------------------------------------------
+
+    def on_ata_flow_app_manage_mcp(self, _: ManageMCP) -> None:
+        try:
+            self.push_screen(MCPManagerScreen())
+        except (ValueError, OSError) as exc:
+            self.notify(str(exc), title="Configuração MCP", severity="error")
 
     def on_ata_flow_app_manage_models(self, _: ManageModels) -> None:
         try:

@@ -334,6 +334,7 @@ class DashboardScreen(Screen):
                 yield Button("Nova Gravacao", id="btn-new", variant="success")
                 yield Button("Atualizar Lista", id="btn-refresh")
                 yield Button("Gerenciar modelos", id="btn-models")
+                yield Button("Servidor MCP", id="btn-mcp")
             with Vertical(id="right-pane"):
                 yield Static("[bold]Historico de Transcricoes[/bold]", id="right-pane-title")
                 yield Static("Nenhuma transcricao encontrada.", id="empty-msg")
@@ -388,6 +389,10 @@ class DashboardScreen(Screen):
     @on(Button.Pressed, "#btn-new")
     def on_btn_new(self) -> None:
         self.app.post_message(self.app.StartNewRecording())
+
+    @on(Button.Pressed, "#btn-mcp")
+    def on_btn_mcp(self) -> None:
+        self.app.post_message(self.app.ManageMCP())
 
     @on(DataTable.RowSelected, "#history-table")
     def on_row_selected(self, event: DataTable.RowSelected) -> None:

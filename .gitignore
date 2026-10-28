@@ -14,5 +14,6 @@ dist/
 config.json
 
 model_preferences.json
+mcp_preferences.json
 .uv-cache/
 .pytest_*/

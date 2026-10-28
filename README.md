@@ -1,4 +1,4 @@
-# 🎙️ AtaFlow (v0.2)
+# 🎙️ AtaFlow (v2.1.0)
 **Transcrição local de reuniões e geração de atas com Gemini.**
 
 O **AtaFlow** é uma ferramenta de linha de comando com uma **Interface Gráfica no Terminal (TUI)** incrivelmente fluida, desenvolvida em Python. Ele escuta simultaneamente o seu microfone e o áudio do sistema (colegas de trabalho, vídeos, apresentações) e gera uma transcrição em tempo real, transcrevendo localmente na sua máquina. A geração de atas usa o Gemini e envia a transcrição textual ao Google.
@@ -77,6 +77,15 @@ do catálogo, escolha outro explicitamente ou atualize suas preferências.
 ---
 
 ## 💻 Como Usar no Dia a Dia
+
+### Resumos em outros chats (MCP)
+
+Abra **Servidor MCP** no painel inicial para ativar/desativar o acesso local aos
+resumos, escolher a pasta compartilhada e ajustar os limites de leitura.
+Use stdio localmente ou ative **Acesso pela rede (HTTP)** para outro computador,
+com IP, porta e token configuráveis. A tela gera a configuração de conexão para
+o Codex e outros clientes. O acesso começa desativado e é somente de leitura. Veja o
+[guia de conexão e uso](docs/mcp.md) para usar atas como contexto ou preparar e-mails.
 
 Para iniciar a mágica, apenas rode:
 
