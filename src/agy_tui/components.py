@@ -4,6 +4,7 @@ Componentes reutilizaveis da plataforma agy_tui.
 Todos os widgets aqui sao desacoplados do dominio do transcritor
 e podem ser importados por qualquer outra ferramenta da plataforma.
 """
+
 from __future__ import annotations
 
 from datetime import datetime
@@ -12,7 +13,6 @@ from typing import ClassVar
 from rich.text import Text
 from textual.app import ComposeResult
 from textual.reactive import reactive
-from textual.widget import Widget
 from textual.widgets import RichLog, Static
 
 
@@ -67,16 +67,19 @@ class ServiceStatusBar(Static):
 
     def render(self) -> Text:
         """Renderiza a barra de status como uma linha Rich Text."""
+
         def badge(label: str, value: str, ok_values: tuple[str, ...]) -> str:
             color = "green" if value in ok_values else "red"
             return f"[{color}]●[/{color}] {label}: [bold]{value}[/]"
 
         return Text.from_markup(
-            "  ".join([
-                badge("Whisper", self.whisper_status, ("carregado", "transcrevendo")),
-                badge("Audio", self.audio_status, ("capturando",)),
-                badge("LLM", self.llm_status, ("pronto", "gerando")),
-            ])
+            "  ".join(
+                [
+                    badge("Whisper", self.whisper_status, ("carregado", "transcrevendo")),
+                    badge("Audio", self.audio_status, ("capturando",)),
+                    badge("LLM", self.llm_status, ("pronto", "gerando")),
+                ]
+            )
         )
 
     def update_whisper(self, status: str) -> None:

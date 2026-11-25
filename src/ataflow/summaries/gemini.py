@@ -6,7 +6,7 @@ import os
 
 from dotenv import load_dotenv
 
-from model_catalog import GeminiService
+from ataflow.summaries.catalog import GeminiService
 
 load_dotenv()
 

@@ -30,8 +30,9 @@ dev = [
 ]
 
 [project.scripts]
-transcriber = "main:run"
-ataflow-mcp = "ataflow_mcp:run"
+ataflow = "ataflow.cli:run"
+transcriber = "ataflow.cli:run"
+ataflow-mcp = "ataflow.mcp.server:run"
 
 [tool.ruff]
 cache-dir = ".cache/ruff"
@@ -43,7 +44,7 @@ select = ["E", "W", "F", "I", "B", "C4", "UP", "SIM"]
 ignore = []
 
 [tool.ruff.lint.isort]
-known-first-party = ["agy_tui", "agy_voice"]
+known-first-party = ["ataflow", "agy_tui", "agy_voice"]
 
 [tool.ruff.format]
 quote-style = "double"
@@ -63,11 +64,7 @@ typeCheckingMode = "standard"
 cache-dir = ".cache/uv"
 [tool.hatch.build.targets.wheel]
 packages = [
-    "agy_tui",
-    "agy_voice"
+    "src/ataflow",
+    "src/agy_tui",
+    "src/agy_voice"
 ]
-
-[tool.hatch.build.targets.wheel.force-include]
-"ataflow_mcp.py" = "ataflow_mcp.py"
-"mcp_settings.py" = "mcp_settings.py"
-"mcp_network.py" = "mcp_network.py"

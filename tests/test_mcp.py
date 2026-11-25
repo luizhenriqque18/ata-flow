@@ -10,8 +10,8 @@ import pytest
 from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
 
-from ataflow_mcp import SummaryLibrary
-from mcp_settings import PROJECT_DIR, MCPSettings, MCPSettingsStore, client_config
+from ataflow.mcp.server import SummaryLibrary
+from ataflow.mcp.settings import MCPSettings, MCPSettingsStore, client_config
 
 
 @pytest.fixture
@@ -122,7 +122,7 @@ async def test_real_stdio_client_and_live_revocation(library, tmp_path):
     # Real protocolo: inicialização, descoberta e ferramentas a partir de outro cwd.
     parameters = StdioServerParameters(
         command=sys.executable,
-        args=[str(PROJECT_DIR / "ataflow_mcp.py"), "--config", str(library.store.path)],
+        args=json.loads(client_config(library.store))["mcpServers"]["ataflow"]["args"],
         cwd=str(tmp_path),
     )
     async with stdio_client(parameters) as (read, write), ClientSession(read, write) as session:

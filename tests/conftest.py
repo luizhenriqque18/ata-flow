@@ -1,12 +1,12 @@
-﻿"""
+"""
 Fixtures compartilhadas para todos os testes.
 
 Estrategia: todos os mocks de hardware (PyAudio) e rede (httpx)
 sao definidos aqui para evitar dependencias externas nos testes.
 """
+
 from __future__ import annotations
 
-import asyncio
 import os
 
 import numpy as np
@@ -37,7 +37,10 @@ def silence_audio_16k() -> np.ndarray:
 def mock_stt_segments():
     """Segmentos STT pre-fabricados para testes de integracao."""
     from agy_voice.interfaces import TranscriptionSegment
+
     return [
         TranscriptionSegment(start=0.0, end=2.5, text="Bom dia a todos", no_speech_prob=0.01),
-        TranscriptionSegment(start=2.5, end=5.0, text="Vamos comecar a reuniao", no_speech_prob=0.02),
+        TranscriptionSegment(
+            start=2.5, end=5.0, text="Vamos comecar a reuniao", no_speech_prob=0.02
+        ),
     ]

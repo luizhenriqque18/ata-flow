@@ -10,8 +10,8 @@ import pytest
 from mcp import ClientSession
 from mcp.client.streamable_http import streamable_http_client
 
-from mcp_network import MCPHTTPService
-from mcp_settings import MCPSettings, MCPSettingsStore, client_config
+from ataflow.mcp.network import MCPHTTPService
+from ataflow.mcp.settings import MCPSettings, MCPSettingsStore, client_config
 
 
 @pytest.fixture
@@ -152,7 +152,7 @@ def test_network_config_does_not_embed_token(network_store):
 async def test_app_starts_saved_network_and_closes_listener(network_store, tmp_path, monkeypatch):
     from argparse import Namespace
 
-    import main
+    from ataflow import cli as main
 
     monkeypatch.chdir(tmp_path)
     app = main.AtaFlowApp(Namespace(), {})

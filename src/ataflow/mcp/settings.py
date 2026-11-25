@@ -11,7 +11,8 @@ import tempfile
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
-PROJECT_DIR = Path(__file__).resolve().parent
+from ataflow.paths import PROJECT_DIR
+
 SETTINGS_PATH = PROJECT_DIR / "mcp_preferences.json"
 
 
@@ -142,7 +143,7 @@ def client_config(store: MCPSettingsStore, format: str = "json") -> str:
         )
     entry = {
         "command": sys.executable,
-        "args": [str(PROJECT_DIR / "ataflow_mcp.py"), "--config", str(store.path)],
+        "args": ["-m", "ataflow.mcp.server", "--config", str(store.path)],
     }
     if format == "codex":
         return (

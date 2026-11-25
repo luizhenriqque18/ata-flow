@@ -9,7 +9,7 @@ import pytest
 from textual.app import App
 
 from agy_tui.screens import DeviceSelection
-from main import AtaFlowApp, TranscriberScreen
+from ataflow.cli import AtaFlowApp, TranscriberScreen
 
 
 @pytest.mark.parametrize("fails", [False, True])
@@ -29,8 +29,8 @@ async def test_stop_waits_before_returning_to_app(tmp_path, monkeypatch, fails):
     session = Mock(start=AsyncMock(return_value=True), finish=AsyncMock(side_effect=finish))
     session.finished = True
     session.session_events = asyncio.Queue()
-    monkeypatch.setattr("main.SessionManager", Mock(return_value=session))
-    monkeypatch.setattr("main.WhisperLocalSTT", Mock())
+    monkeypatch.setattr("ataflow.cli.SessionManager", Mock(return_value=session))
+    monkeypatch.setattr("ataflow.cli.WhisperLocalSTT", Mock())
     screen = TranscriberScreen(
         Namespace(model="tiny", lang="pt", chunk=10, overlap=2),
         DeviceSelection(0, "Mic", 1, "Sistema"),

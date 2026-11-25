@@ -21,7 +21,7 @@ from textual.widgets import (
     TextArea,
 )
 
-from mcp_settings import MCPSettings, MCPSettingsStore, client_config
+from ataflow.mcp.settings import MCPSettings, MCPSettingsStore, client_config
 
 
 class MCPManagerScreen(Screen):

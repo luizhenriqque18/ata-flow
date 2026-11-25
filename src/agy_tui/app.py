@@ -4,6 +4,7 @@ Classe base de aplicacao para a plataforma agy_tui.
 Herdar desta classe garante que todas as ferramentas da plataforma
 compartilhem o mesmo ciclo de vida, teclas de atalho globais e tema.
 """
+
 from __future__ import annotations
 
 import logging

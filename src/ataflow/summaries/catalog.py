@@ -13,8 +13,10 @@ from pathlib import Path
 
 import httpx
 
+from ataflow.paths import PROJECT_DIR
+
 GEMINI_BASE = "https://generativelanguage.googleapis.com/v1beta"
-PREFERENCES_PATH = Path(__file__).resolve().parent / "model_preferences.json"
+PREFERENCES_PATH = PROJECT_DIR / "model_preferences.json"
 
 
 class InvalidGenerationResponse(ValueError):

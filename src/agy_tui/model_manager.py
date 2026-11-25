@@ -12,7 +12,7 @@ from textual.containers import Container, Horizontal, Vertical, VerticalScroll
 from textual.screen import ModalScreen, Screen
 from textual.widgets import Button, DataTable, Footer, Header, Input, Label, Select, Static
 
-from model_catalog import GeminiService, ModelInfo, PreferenceStore
+from ataflow.summaries.catalog import GeminiService, ModelInfo, PreferenceStore
 
 
 class ModelManagerScreen(Screen[bool]):

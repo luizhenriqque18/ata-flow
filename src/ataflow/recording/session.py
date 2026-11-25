@@ -11,7 +11,7 @@ import numpy as np
 
 from agy_voice.interfaces import STTStrategy, TranscriptionSegment
 from agy_voice.processing import deduplicate
-from audio_capture import AudioCapture
+from ataflow.recording.capture import AudioCapture
 
 logger = logging.getLogger(__name__)
 

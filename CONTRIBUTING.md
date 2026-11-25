@@ -1,160 +1,88 @@
-# Contribuindo com o ataflow
+# Contribuindo com o AtaFlow
 
-Obrigado pelo interesse em contribuir! Este documento explica como configurar o ambiente de desenvolvimento e entender a arquitetura do projeto.
+## Ambiente
 
-## Pre-requisitos
-
-- Python 3.12+
-- [uv](https://docs.astral.sh/uv/) (gerenciador de pacotes ultrarapido)
-- Windows 10/11 (a captura WASAPI e especifica do Windows)
-
-## Configuracao do Ambiente
-
-`powershell
-# 1. Clone o repositorio
-git clone <URL>
-cd ataflow
-
-# 2. Instale as dependencias (uv cria o .venv automaticamente)
-uv sync --extra dev
-
-# 3. Copie e configure as variaveis de ambiente
-copy .env.example .env
-# Edite .env e adicione sua GEMINI_API_KEY se for usar o Gemini
-
-# 4. Rode a aplicacao
-uv run python main.py
-`
-
-## Rodando os Testes
-
-`powershell
-# Suite completa
-uv run pytest tests/ -v
-
-# Com cobertura de codigo
-uv run pytest tests/ --cov=agy_voice --cov=agy_tui --cov-report=term-missing
-
-# Apenas testes de STT
-uv run pytest tests/agy_voice/ -v
-`
-
-## Linting e Formatacao
-
-Este projeto usa Ruff para lint e formatacao:
-
-`powershell
-# Verificar problemas
-uv run ruff check .
-
-# Corrigir automaticamente
-uv run ruff check --fix .
-
-# Formatar codigo
-uv run ruff format .
-`
-
-## Arquitetura
-
-`
-ataflow/
-|-- main.py                   # Ponto de entrada: App Textual
-|-- audio_capture.py          # Captura WASAPI (microfone + sistema)
-|-- session_manager.py        # Orquestra audio -> STT -> arquivo
-|-- summary_service.py        # Caso de uso: transcricao -> ata salva
-|-- summarizer.py             # Resumo LLM (Gemini)
-|
-|-- agy_tui/                  # Biblioteca TUI (reutilizavel em outras ferramentas)
-|   |-- app.py                # Classe base AgyApp (herda de textual.App)
-|   |-- components.py         # Widgets: TranscriptionLog, ServiceStatusBar, etc.
-|   -- theme.tcss            # Design System da plataforma
-|
-|-- agy_voice/                # Integracao de voz (Strategy Pattern)
-|   |-- interfaces.py         # ABCs: STTStrategy, TranscriptionSegment
-|   -- stt/
-|       -- whisper_local.py  # Provedor: faster-whisper local (CUDA/CPU)
-|
--- tests/
-    |-- conftest.py           # Fixtures compartilhadas (mocks de hardware)
-    |-- agy_voice/            # Testes unitarios do STT
-    -- agy_tui/              # Testes dos componentes de UI
-`
-
-### Adicionando um Novo Provedor STT
-
-1. Crie um novo arquivo em gy_voice/stt/:
-`python
-# agy_voice/stt/meu_provedor.py
-from agy_voice.interfaces import STTStrategy, TranscriptionSegment
-import numpy as np
-
-class MeuSTT(STTStrategy):
-    @property
-    def sample_rate(self) -> int:
-        return 16_000
-
-    def is_available(self) -> bool:
-        ...
-
-    def load(self) -> bool:
-        ...
-
-    def transcribe(self, audio_data: np.ndarray) -> list[TranscriptionSegment]:
-        ...
-`
-
-2. Exporte em gy_voice/stt/__init__.py
-3. Injete a instância explicitamente: `SessionManager(stt=MeuSTT())`.
-   O ponto de montagem atual em `main.py` escolhe `WhisperLocalSTT`.
-   A CLI ainda não possui uma opção `--stt`.
-
-A deduplicação de palavras sobrepostas pertence a `agy_voice/processing.py`, não
-ao provedor STT. O `SessionManager` depende somente de `STTStrategy` e aplica esse
-processamento a qualquer implementação. O contrato exige propagação de falhas;
-uma lista vazia indica ausência de fala, não erro de execução do modelo.
-
-### Adicionando um Novo Widget ao agy_tui
-
-1. Herde de um widget Textual (Static, Widget, RichLog, etc.)
-2. Adicione o widget em gy_tui/components.py
-3. Exporte em gy_tui/__init__.py
-4. Escreva testes em 	ests/agy_tui/
-
-## Variaveis de Ambiente
-
-Veja .env.example para a lista completa de configuracoes disponiveis.
-NUNCA faca commit do arquivo .env — ele ja esta no .gitignore.
-
-
-## Catálogo e preferências de modelos
-
-- `model_catalog.py`: catálogo Gemini paginado, teste de geração textual e armazenamento
-  atômico de preferências em `model_preferences.json` (ignorado pelo Git).
-- `agy_tui/model_manager.py`: tela com catálogo, favoritos e modelo padrão, além do modal
-  de escolha utilizado na geração de atas. Workers mantêm a interface responsiva.
-- `summarizer.py`: geração das atas pelo mesmo cliente utilizado nos testes dos modelos.
-- `summary_service.py`: caso de uso `GenerateMeetingSummary`, reutilizável sem TUI;
-  lê a transcrição, solicita a ata e salva o Markdown atomicamente. A interface apenas
-  chama o serviço e apresenta o resultado. O gerador pode ser injetado nos testes.
-- Testes usam `httpx.MockTransport` e o Pilot do Textual, sem chamadas reais à API.
-
-Validação específica:
+Requisitos: Windows 10/11, Python 3.12+ e uv. A captura usa WASAPI.
 
 ```powershell
-uv run pytest tests/test_model_catalog.py tests/agy_tui/test_model_manager.py
+uv sync --extra dev
+copy .env.example .env
+uv run ataflow
 ```
 
-Não salve credenciais no arquivo de preferências nem em mensagens persistidas dos testes.
-O Ollama não é mais suportado para geração de atas; configurações antigas dele são ignoradas.
+Configure GEMINI_API_KEY no .env para gerar atas. Nunca versione credenciais,
+preferências locais ou arquivos de reuniões.
 
-## Ciclo de vida da gravação
+## Estrutura do código
 
-`await session.start(...)` carrega o STT fora do event loop e inicia o produtor e o
-consumidor em um `TaskGroup` pertencente à sessão. `await session.finish()` para a
-captura, entrega os últimos callbacks, processa as filas e o bloco final incompleto,
-e aguarda a escrita da transcrição. Chamadas repetidas são seguras.
+```text
+src/
+├── ataflow/
+│   ├── cli.py               # App Textual, navegação e argumentos
+│   ├── paths.py             # Localização dos arquivos locais
+│   ├── recording/
+│   │   ├── capture.py       # Captura WASAPI
+│   │   └── session.py       # Ciclo de vida e filas de transcrição
+│   ├── summaries/
+│   │   ├── catalog.py       # Cliente Gemini, catálogo e preferências
+│   │   ├── gemini.py        # Prompt e adaptador de geração
+│   │   └── service.py       # Caso de uso de geração da ata
+│   └── mcp/
+│       ├── server.py        # Biblioteca de resumos e protocolo MCP
+│       ├── settings.py      # Preferências e configuração de clientes
+│       └── network.py       # Ciclo de vida do HTTP
+├── agy_tui/                 # Componentes, telas e tema Textual
+└── agy_voice/               # Contratos STT e processamento de texto
+```
 
-A interface só abre a seleção de modelo após essa conclusão. Ao sair pelo Ctrl+C,
-a sessão também é finalizada antes de encerrar o aplicativo. Erros de transcrição
-ou persistência impedem a geração automática da ata e preservam o texto já salvo.
-As filas aplicam espera quando o STT está ocupado, sem descartar blocos pendentes.
+Instale o projeto com uv sync após alterar a estrutura ou os comandos em
+pyproject.toml. Os pacotes são importados da instalação, sem modificar sys.path
+nos testes. O wheel inclui os três pacotes e o tema TCSS.
+
+As entradas oficiais são `uv run ataflow` e `uv run ataflow-mcp`. O comando
+`transcriber` permanece como alias. Os scripts main.py e ataflow_mcp.py na raiz
+são adaptadores para atalhos e conexões MCP existentes.
+
+## Testes e ferramentas
+
+```powershell
+uv run pytest tests/
+uv run pytest tests/ --cov=ataflow --cov=agy_voice --cov=agy_tui
+uv run pytest tests/test_session_manager.py tests/test_summary_service.py
+uv run python -m ruff check src tests main.py ataflow_mcp.py
+uv run python -m ruff format src tests main.py ataflow_mcp.py
+uv build --wheel --out-dir .cache/dist
+```
+
+Ruff precisa estar instalado no ambiente de desenvolvimento. Os caches do pytest,
+Ruff e uv ficam em .cache. O pytest usa .cache/pytest-tmp para arquivos temporários;
+para execuções simultâneas, forneça um --basetemp diferente dentro de .cache.
+Testes de captura e Gemini usam implementações simuladas. Há também testes reais
+do protocolo MCP em stdio e HTTP local, sem ler reuniões do usuário.
+
+## Adicionar um provedor STT
+
+Implemente `agy_voice.interfaces.STTStrategy`: is_available, load, transcribe e
+sample_rate. Injete a implementação em `SessionManager(stt=MeuSTT())`. A montagem
+atual em ataflow.cli escolhe WhisperLocalSTT; não existe argumento --stt na CLI.
+
+A deduplicação pertence a agy_voice.processing e funciona com qualquer provedor.
+Uma lista vazia indica ausência de fala. Erros do modelo devem ser propagados.
+
+## Ciclo de vida da sessão
+
+`await session.start(...)` carrega o STT fora do event loop e inicia produtor e
+consumidor em um TaskGroup. `await session.finish()` para a captura, entrega os
+últimos callbacks, drena as filas e processa o bloco final incompleto. Somente
+após a escrita da transcrição a interface abre a geração de ata. Ctrl+C também
+aguarda a finalização. Falhas preservam o texto já salvo e impedem a ata automática.
+
+## Geração de atas e modelos
+
+GenerateMeetingSummary lê a transcrição, chama um gerador injetável e publica o
+Markdown atomicamente. A interface apenas chama o serviço e apresenta o resultado.
+O cliente Gemini é compartilhado pelo catálogo, pelos testes de disponibilidade
+e pela geração. As preferências usam escrita atômica e nunca incluem a chave API.
+Ollama não é suportado.
+
+Consulte [o guia MCP](docs/mcp.md) e [a decisão de layout](docs/architecture/adr-001-directory-layout.md).

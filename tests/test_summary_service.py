@@ -5,7 +5,7 @@ from unittest.mock import AsyncMock, Mock
 
 import pytest
 
-from summary_service import GenerateMeetingSummary
+from ataflow.summaries.service import GenerateMeetingSummary
 
 
 async def test_generates_summary_next_to_transcript(tmp_path):
@@ -33,7 +33,9 @@ async def test_failure_preserves_transcript_and_previous_summary(tmp_path, monke
     if failure == "generation":
         generator.summarize.side_effect = ConnectionError("Sem conexão")
     if failure == "write":
-        monkeypatch.setattr("summary_service.os.replace", Mock(side_effect=OSError("Sem espaço")))
+        monkeypatch.setattr(
+            "ataflow.summaries.service.os.replace", Mock(side_effect=OSError("Sem espaço"))
+        )
     with pytest.raises((ConnectionError, OSError, ValueError)):
         await GenerateMeetingSummary(lambda **_: generator).execute(source, "gemini", "modelo")
     assert source.read_text(encoding="utf-8") == "Texto original"
@@ -56,7 +58,7 @@ async def test_invalid_source_never_calls_provider(tmp_path, name, content):
 
 @pytest.mark.parametrize("fails", [False, True])
 async def test_app_presents_service_result_or_error(tmp_path, monkeypatch, fails):
-    from main import AtaFlowApp
+    from ataflow.cli import AtaFlowApp
 
     service = Mock(execute=AsyncMock(return_value=tmp_path / "call-resumo.md"))
     if fails:

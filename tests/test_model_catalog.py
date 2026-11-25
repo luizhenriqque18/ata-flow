@@ -5,14 +5,14 @@ import json
 import httpx
 import pytest
 
-from model_catalog import (
+from ataflow.summaries.catalog import (
     CheckResult,
     GeminiService,
     ModelInfo,
     ModelPreferences,
     PreferenceStore,
 )
-from summarizer import GeminiSummarizer, SummarizerFactory
+from ataflow.summaries.gemini import GeminiSummarizer, SummarizerFactory
 
 
 def test_preferences_roundtrip_and_no_secrets(tmp_path):
@@ -41,7 +41,9 @@ def test_atomic_save_failure_keeps_previous_preferences(tmp_path, monkeypatch):
     store = PreferenceStore(tmp_path / "models.json")
     prefs = ModelPreferences(favorites=["old"], default_model="old")
     store.save(prefs)
-    monkeypatch.setattr("model_catalog.os.replace", lambda *args: (_ for _ in ()).throw(OSError()))
+    monkeypatch.setattr(
+        "ataflow.summaries.catalog.os.replace", lambda *args: (_ for _ in ()).throw(OSError())
+    )
     with pytest.raises(OSError):
         store.save(ModelPreferences(favorites=["new"], default_model="new"))
     assert store.load() == prefs

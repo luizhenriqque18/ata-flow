@@ -90,7 +90,7 @@ o Codex e outros clientes. O acesso começa desativado e é somente de leitura. 
 Para iniciar a mágica, apenas rode:
 
 ```powershell
-uv run python main.py
+uv run ataflow
 ```
 *(💡 Dica: Se você usou nosso script `criar_atalho.bat`, basta dar duplo clique no atalho gerado na Área de Trabalho!)*
 

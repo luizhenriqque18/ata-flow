@@ -6,10 +6,12 @@ Refatoracao em relacao ao original:
 - A API publica permanece a mesma: start() / stop() / list_devices()
 - Sem mudancas no comportamento de downmix e resample
 """
+
 from __future__ import annotations
 
 import asyncio
 import logging
+from contextlib import suppress
 
 import numpy as np
 import pyaudiowpatch as pyaudio
@@ -107,13 +109,17 @@ class AudioCapture:
             except asyncio.QueueFull:
                 logger.debug("Fila de audio cheia, descartando chunk.")
 
-    def _mic_callback(self, in_data: bytes, _frame_count: int, _time_info: dict, _status: int) -> tuple:
+    def _mic_callback(
+        self, in_data: bytes, _frame_count: int, _time_info: dict, _status: int
+    ) -> tuple:
         if in_data and self.running:
             audio = np.frombuffer(in_data, dtype=np.float32)
             self._put_async(self.mic_queue, audio)
         return (in_data, pyaudio.paContinue)
 
-    def _sys_callback(self, in_data: bytes, _frame_count: int, _time_info: dict, _status: int) -> tuple:
+    def _sys_callback(
+        self, in_data: bytes, _frame_count: int, _time_info: dict, _status: int
+    ) -> tuple:
         if in_data and self.running:
             audio = np.frombuffer(in_data, dtype=np.float32)
 
@@ -133,17 +139,24 @@ class AudioCapture:
     # Controle de ciclo de vida
     # ------------------------------------------------------------------
 
-    def start(self, mic_index: int | None = None, sys_index: int | None = None, loop: "asyncio.AbstractEventLoop | None" = None) -> None:
+    def start(
+        self,
+        mic_index: int | None = None,
+        sys_index: int | None = None,
+        loop: asyncio.AbstractEventLoop | None = None,
+    ) -> None:
         """Inicia a captura de audio. Deve ser chamado com o event loop ativo."""
         self._loop = loop or asyncio.get_event_loop()
         self.running = True
 
         mic_info = (
-            self._pa.get_device_info_by_index(mic_index) if mic_index is not None
+            self._pa.get_device_info_by_index(mic_index)
+            if mic_index is not None
             else self._get_default_mic()
         )
         sys_info = (
-            self._pa.get_device_info_by_index(sys_index) if sys_index is not None
+            self._pa.get_device_info_by_index(sys_index)
+            if sys_index is not None
             else self._get_wasapi_loopback()
         )
 
@@ -189,10 +202,8 @@ class AudioCapture:
                     stream.close()
                 except Exception:
                     pass
-        try:
+        with suppress(Exception):
             self._pa.terminate()
-        except Exception:
-            pass
 
     # ------------------------------------------------------------------
     # Utilitario de mixagem

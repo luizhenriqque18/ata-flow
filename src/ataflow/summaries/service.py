@@ -9,7 +9,7 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Protocol
 
-from summarizer import SummarizerFactory
+from ataflow.summaries.gemini import SummarizerFactory
 
 
 class SummaryGenerator(Protocol):

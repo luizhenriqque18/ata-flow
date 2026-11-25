@@ -5,8 +5,8 @@ from textual.app import App
 from textual.widgets import Button, Collapsible, Input, Select, Static, Switch, TextArea
 
 from agy_tui.mcp_manager import MCPManagerScreen
-from mcp_network import MCPHTTPService
-from mcp_settings import MCPSettingsStore
+from ataflow.mcp.network import MCPHTTPService
+from ataflow.mcp.settings import MCPSettingsStore
 
 
 class SettingsApp(App):
@@ -61,7 +61,7 @@ async def test_invalid_and_cancel_preserve_preferences(tmp_path):
 async def test_dashboard_opens_mcp_settings(tmp_path, monkeypatch):
     from argparse import Namespace
 
-    import main
+    from ataflow import cli as main
 
     store = MCPSettingsStore(tmp_path / "prefs.json")
     monkeypatch.chdir(tmp_path)

@@ -1,9 +1,10 @@
-﻿"""
+"""
 Testes dos componentes de UI da agy_tui.
 
 Usa o framework de testes nativo do Textual (pilot) para garantir
 que os widgets reagem corretamente a dados sem precisar de hardware.
 """
+
 from __future__ import annotations
 
 import pytest

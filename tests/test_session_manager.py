@@ -9,7 +9,7 @@ import numpy as np
 import pytest
 
 from agy_voice.interfaces import STTStrategy, TranscriptionSegment
-from session_manager import SessionManager
+from ataflow.recording.session import SessionManager
 
 
 class FakeCapture:

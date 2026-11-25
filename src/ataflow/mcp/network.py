@@ -8,7 +8,7 @@ from contextlib import contextmanager, suppress
 
 import uvicorn
 
-from mcp_settings import MCPSettingsStore
+from ataflow.mcp.settings import MCPSettingsStore
 
 
 class EmbeddedServer(uvicorn.Server):
@@ -48,7 +48,7 @@ class MCPHTTPService:
         if self.running and configuration == self._configuration:
             return
         await self.stop()
-        from ataflow_mcp import create_http_app
+        from ataflow.mcp.server import create_http_app
 
         app = create_http_app(self.store)
         family = socket.AF_INET6 if ":" in settings.http_host else socket.AF_INET

@@ -7,7 +7,7 @@ mesma configuração salva.
 
 ## Configurar no AtaFlow
 
-1. Atualize as dependências com `uv sync` e abra `uv run python main.py`.
+1. Atualize as dependências com `uv sync` e abra `uv run ataflow`.
 2. No painel inicial, abra **Servidor MCP**.
 3. Escolha a pasta compartilhada (por padrão `transcricoes`), resultados por
    página e caracteres por leitura/busca. A pasta precisa existir. Caminhos
@@ -111,7 +111,7 @@ autenticação válido; use um cliente MCP.
 Depois de salvar as preferências, deixe este comando rodando no servidor:
 
 ```powershell
-uv run python ataflow_mcp.py --transport streamable-http
+uv run ataflow-mcp --transport streamable-http
 ```
 
 Use `--config CAMINHO` se desejar outro arquivo de preferências. `Ctrl+C` encerra
@@ -128,7 +128,7 @@ e evitando duplicar uma seção `mcp_servers.ataflow`. Reinicie a conexão/clien
 Alternativa pela CLI (PowerShell, executando na pasta do AtaFlow):
 
 ```powershell
-codex mcp add ataflow -- "$PWD\.venv\Scripts\python.exe" "$PWD\ataflow_mcp.py"
+codex mcp add ataflow -- "$PWD\.venv\Scripts\python.exe" -m ataflow.mcp.server
 codex mcp list
 ```
 

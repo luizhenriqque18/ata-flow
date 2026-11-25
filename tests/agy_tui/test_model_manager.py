@@ -7,7 +7,7 @@ from textual.app import App
 from textual.widgets import Button, DataTable, Input, Select, Static
 
 from agy_tui.model_manager import ModelManagerScreen, ModelSelectionModal
-from model_catalog import CheckResult, ModelInfo, ModelPreferences, PreferenceStore
+from ataflow.summaries.catalog import CheckResult, ModelInfo, ModelPreferences, PreferenceStore
 
 MODELS = [
     ModelInfo("gemini-3.1-flash", "3.1", "Gemini", True),
@@ -185,10 +185,12 @@ async def test_unavailable_catalog_preserves_cached_favorites(tmp_path):
 
 
 async def test_dashboard_opens_model_manager(tmp_path, monkeypatch):
-    from main import AtaFlowApp
+    from ataflow.cli import AtaFlowApp
 
     store = PreferenceStore(tmp_path / "models.json")
-    monkeypatch.setattr("main.ModelManagerScreen", lambda: ModelManagerScreen(store, FakeService()))
+    monkeypatch.setattr(
+        "ataflow.cli.ModelManagerScreen", lambda: ModelManagerScreen(store, FakeService())
+    )
     app = AtaFlowApp(Namespace(provider="gemini"), {})
     async with app.run_test(size=(120, 42)) as pilot:
         await pilot.click("#btn-models")

@@ -4,12 +4,13 @@ agy_tui — Biblioteca base de TUI da plataforma agy.
 Fornece app base, componentes reutilizaveis, telas e tema visual padronizado
 construidos sobre o framework Textual.
 """
+
 from agy_tui.app import AgyApp
-from agy_tui.components import TranscriptionLog, ServiceStatusBar, DeviceSelector
+from agy_tui.components import DeviceSelector, ServiceStatusBar, TranscriptionLog
 from agy_tui.screens import (
-    DeviceSetupScreen,
-    DeviceSelection,
     DashboardScreen,
+    DeviceSelection,
+    DeviceSetupScreen,
     ModelSelectionModal,
     SummaryViewerScreen,
 )
