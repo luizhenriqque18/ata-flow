@@ -1,5 +1,37 @@
 # Histórico de versões
 
+## 2.1.1 — 2026-11-25
+
+### Encerramento completo da gravação
+
+- A sessão aguarda a captura parar, processa o áudio pendente e o último bloco
+  incompleto, e conclui a escrita da transcrição antes de liberar a geração da ata.
+- A saída por `Ctrl+C` também aguarda a finalização da sessão.
+- Filas cheias aguardam espaço, sem descartar blocos de áudio pendentes.
+- Falhas do Whisper e de escrita interrompem o fluxo automático de geração da
+  ata e preservam o texto já salvo, em vez de serem tratadas como ausência de fala.
+
+### Organização do código
+
+- Geração de atas extraída para `GenerateMeetingSummary`, um serviço independente
+  da interface, com leitura da transcrição e gravação atômica do Markdown.
+  Uma falha preserva a transcrição e uma eventual ata anterior.
+- O `SessionManager` recebe explicitamente uma implementação de `STTStrategy`.
+  A deduplicação de texto sobreposto foi movida para `agy_voice/processing.py`;
+  o gerenciador não importa mais o backend Whisper.
+- Os testes legados foram atualizados para os contratos atuais de transcrição.
+
+### Validação e atualização
+
+- Suíte completa: 113 testes aprovados e 1 teste de symlink ignorado por limitação
+  do Windows. Testes de gravação usam áudio e STT simulados; testes de geração de
+  atas usam um provedor simulado, sem chamadas reais ao Gemini.
+- Ruff e formatação aprovados nos módulos alterados e seus testes.
+- Atualize o código com `git pull --ff-only`, execute `uv sync` e inicie com
+  `uv run python main.py`.
+- Integrações Python que criam sessões devem fornecer `stt=...`, aguardar
+  `session.start(...)` e finalizar com `await session.finish()`.
+
 ## 2.1.0 — 2026-10-28
 
 ### Resumos disponíveis para outros chats pelo servidor MCP

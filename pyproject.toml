@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "ataflow"
-version = "2.1.0"
+version = "2.1.1"
 description = "AtaFlow - Transcritor e gerador de atas de reunioes com TUI"
 readme = "README.md"
 requires-python = ">=3.12"

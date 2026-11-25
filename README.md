@@ -1,4 +1,4 @@
-# 🎙️ AtaFlow (v2.1.0)
+# 🎙️ AtaFlow (v2.1.1)
 **Transcrição local de reuniões e geração de atas com Gemini.**
 
 O **AtaFlow** é uma ferramenta de linha de comando com uma **Interface Gráfica no Terminal (TUI)** incrivelmente fluida, desenvolvida em Python. Ele escuta simultaneamente o seu microfone e o áudio do sistema (colegas de trabalho, vídeos, apresentações) e gera uma transcrição em tempo real, transcrevendo localmente na sua máquina. A geração de atas usa o Gemini e envia a transcrição textual ao Google.

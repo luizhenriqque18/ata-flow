@@ -1,5 +1,5 @@
 """
-Ponto de entrada do AtaFlow 2.0.
+Ponto de entrada do AtaFlow.
 
 Fluxo de execucao:
   1. AtaFlowApp inicia e empurra o DashboardScreen.
@@ -176,7 +176,7 @@ class TranscriberScreen(Screen[str | None]):
 
 class AtaFlowApp(AgyApp):
     """
-    App central do AtaFlow 2.0.
+    App central do AtaFlow.
 
     Orquestra a navegacao entre telas usando o sistema de Screen do Textual.
     Sempre retorna ao DashboardScreen apos qualquer acao concluida.

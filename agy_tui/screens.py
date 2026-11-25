@@ -261,7 +261,7 @@ class DashboardScreen(Screen):
     A lista e atualizada automaticamente ao retornar de qualquer fluxo.
     """
 
-    TITLE = "AtaFlow 2.0"
+    TITLE = "AtaFlow"
     SUB_TITLE = "Dashboard"
 
     DEFAULT_CSS = """
