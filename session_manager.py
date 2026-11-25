@@ -10,7 +10,7 @@ from pathlib import Path
 import numpy as np
 
 from agy_voice.interfaces import STTStrategy, TranscriptionSegment
-from agy_voice.stt import WhisperLocalSTT
+from agy_voice.processing import deduplicate
 from audio_capture import AudioCapture
 
 logger = logging.getLogger(__name__)
@@ -24,7 +24,8 @@ class SessionManager:
         chunk_duration: float = 10.0,
         overlap: float = 2.0,
         max_queue_size: int = 10,
-        stt: STTStrategy | None = None,
+        *,
+        stt: STTStrategy,
         audio_capture: AudioCapture | None = None,
         output_dir: str | Path = "./transcricoes",
     ) -> None:
@@ -32,7 +33,7 @@ class SessionManager:
             raise ValueError("Use duração positiva, 0 <= overlap < duração e fila positiva.")
         self.chunk_duration = chunk_duration
         self.overlap = overlap
-        self.stt = stt or WhisperLocalSTT()
+        self.stt = stt
         self.audio_capture = audio_capture or AudioCapture(sample_rate=self.stt.sample_rate)
         self.output_dir = Path(output_dir)
         self.output_dir.mkdir(parents=True, exist_ok=True)
@@ -164,7 +165,7 @@ class SessionManager:
                 )
                 if segments:
                     full_text = " ".join(s.text for s in segments)
-                    deduped = WhisperLocalSTT.deduplicate(self._last_text, full_text)
+                    deduped = deduplicate(self._last_text, full_text)
                     self._last_text = full_text
                     if deduped.strip():
                         start_str = self._fmt_time(segments[0].start)

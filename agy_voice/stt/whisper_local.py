@@ -196,29 +196,3 @@ class WhisperLocalSTT(STTStrategy):
             raise
 
         return results
-
-    @staticmethod
-    def deduplicate(previous_text: str, current_text: str) -> str:
-        """
-        Remove sobreposicao de palavras entre o fim do chunk anterior
-        e o inicio do chunk atual (resultado do overlap de audio).
-
-        Args:
-            previous_text: Texto do chunk anterior.
-            current_text: Texto do chunk atual.
-
-        Returns:
-            Texto atual sem a sobreposicao com o anterior.
-        """
-        if not previous_text or not current_text:
-            return current_text
-
-        prev_words = previous_text.split()[-5:]
-        curr_words = current_text.split()
-
-        for i in range(len(prev_words)):
-            prefix = prev_words[i:]
-            if len(prefix) <= len(curr_words) and curr_words[: len(prefix)] == prefix:
-                return " ".join(curr_words[len(prefix) :])
-
-        return current_text

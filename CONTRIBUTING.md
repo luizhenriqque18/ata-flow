@@ -104,7 +104,14 @@ class MeuSTT(STTStrategy):
 `
 
 2. Exporte em gy_voice/stt/__init__.py
-3. Passe a instancia via --stt na CLI ou diretamente no SessionManager
+3. Injete a instância explicitamente: `SessionManager(stt=MeuSTT())`.
+   O ponto de montagem atual em `main.py` escolhe `WhisperLocalSTT`.
+   A CLI ainda não possui uma opção `--stt`.
+
+A deduplicação de palavras sobrepostas pertence a `agy_voice/processing.py`, não
+ao provedor STT. O `SessionManager` depende somente de `STTStrategy` e aplica esse
+processamento a qualquer implementação. O contrato exige propagação de falhas;
+uma lista vazia indica ausência de fala, não erro de execução do modelo.
 
 ### Adicionando um Novo Widget ao agy_tui
 

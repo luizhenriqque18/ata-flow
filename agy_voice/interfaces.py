@@ -1,15 +1,19 @@
-﻿"""
+"""
 Interfaces abstratas (Strategy Pattern) para provedores de STT.
 
 Qualquer novo provedor de transcricao deve herdar de STTStrategy
-e implementar o metodo 	ranscribe. Isso garante que o SessionManager
+e implementar o metodo transcribe. Isso garante que o SessionManager
 seja completamente agnóstico ao backend de transcricao.
 """
+
 from __future__ import annotations
 
-import asyncio
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    import numpy as np
 
 
 @dataclass(frozen=True, slots=True)
@@ -56,7 +60,7 @@ class STTStrategy(ABC):
         """
 
     @abstractmethod
-    def transcribe(self, audio_data: "np.ndarray") -> list[TranscriptionSegment]:  # type: ignore[name-defined]
+    def transcribe(self, audio_data: np.ndarray) -> list[TranscriptionSegment]:
         """
         Transcreve um chunk de audio.
 
@@ -65,6 +69,7 @@ class STTStrategy(ABC):
 
         Returns:
             Lista de segmentos transcritos. Lista vazia se nao houver fala.
+            Erros de processamento devem ser propagados para impedir atas incompletas.
         """
 
     @property

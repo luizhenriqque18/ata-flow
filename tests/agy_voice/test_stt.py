@@ -4,7 +4,10 @@ Testes unitarios para a interface STT e o provedor WhisperLocalSTT.
 Nao carrega o modelo Whisper real — usa mocks para validar
 os contratos da interface sem gastar memoria ou tempo de GPU.
 """
+
 from __future__ import annotations
+
+from dataclasses import FrozenInstanceError
 
 import numpy as np
 import pytest
@@ -13,8 +16,8 @@ from pytest_mock import MockerFixture
 from agy_voice.interfaces import STTStrategy, TranscriptionSegment
 from agy_voice.stt import WhisperLocalSTT
 
-
 # --- Testes da Interface / Contrato ---
+
 
 class DummySTT(STTStrategy):
     """Implementacao minima para testar a interface abstrata."""
@@ -47,11 +50,12 @@ def test_stt_interface_contract() -> None:
 def test_transcription_segment_immutability() -> None:
     """TranscriptionSegment deve ser frozen (imutavel)."""
     seg = TranscriptionSegment(start=0.0, end=1.0, text="hello")
-    with pytest.raises(Exception):  # FrozenInstanceError ou AttributeError
+    with pytest.raises(FrozenInstanceError):
         seg.text = "modified"  # type: ignore[misc]
 
 
 # --- Testes do WhisperLocalSTT ---
+
 
 def test_whisper_not_available_before_load() -> None:
     """Whisper nao deve estar disponivel antes de chamar load()."""
@@ -133,25 +137,3 @@ def test_whisper_filters_no_speech(mocker: MockerFixture, sample_audio_16k: np.n
 
     segments = stt.transcribe(sample_audio_16k)
     assert len(segments) == 0
-
-
-def test_deduplicate_removes_overlap() -> None:
-    """Deduplicacao deve remover palavras sobrepostas entre chunks."""
-    prev = "Bom dia a todos nos"
-    curr = "todos nos vamos comecar"
-    result = WhisperLocalSTT.deduplicate(prev, curr)
-    assert result == "vamos comecar"
-
-
-def test_deduplicate_no_overlap() -> None:
-    """Sem sobreposicao, retorna o texto atual inteiro."""
-    prev = "um dois tres"
-    curr = "quatro cinco seis"
-    result = WhisperLocalSTT.deduplicate(prev, curr)
-    assert result == curr
-
-
-def test_deduplicate_empty_inputs() -> None:
-    """Entradas vazias devem retornar o texto atual sem erros."""
-    assert WhisperLocalSTT.deduplicate("", "algum texto") == "algum texto"
-    assert WhisperLocalSTT.deduplicate("algum texto", "") == ""

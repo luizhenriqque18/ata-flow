@@ -8,7 +8,7 @@ from unittest.mock import Mock
 import numpy as np
 import pytest
 
-from agy_voice.interfaces import TranscriptionSegment
+from agy_voice.interfaces import STTStrategy, TranscriptionSegment
 from session_manager import SessionManager
 
 
@@ -31,8 +31,13 @@ class FakeCapture:
             self.loop.call_soon_threadsafe(self.final_queue.put_nowait, self.final_audio)
 
 
-class FakeSTT:
-    sample_rate = 10
+class FakeSTT(STTStrategy):
+    @property
+    def sample_rate(self):
+        return 10
+
+    def is_available(self):
+        return True
 
     def __init__(self):
         self.audio = []
@@ -163,6 +168,22 @@ async def test_capture_start_failure_cleans_up(session):
     assert session.audio_capture.stop_calls == 1
 
 
+async def test_overlaps_are_removed_for_any_stt_strategy(session):
+    texts = iter(["a decisão foi aprovada", "a decisão foi aprovada", "aprovada por todos"])
+
+    def transcribe(audio):
+        return [TranscriptionSegment(0, 1, next(texts))]
+
+    session.stt.transcribe = transcribe
+    await session.start()
+    session.audio_capture.mic_queue.put_nowait(np.zeros(26, dtype=np.float32))
+    await session.finish()
+    saved = Path(session.output_file).read_text(encoding="utf-8")
+    assert saved.count("a decisão foi aprovada") == 1
+    assert saved.count("aprovada") == 1
+    assert "por todos" in saved
+
+
 async def test_whisper_failure_is_not_treated_as_silence(session):
     from agy_voice.stt import WhisperLocalSTT
 
@@ -187,4 +208,4 @@ def test_format_time(seconds, expected):
 @pytest.mark.parametrize("chunk, overlap", [(0, 0), (1, 1), (1, -1)])
 def test_invalid_chunk_settings(chunk, overlap):
     with pytest.raises(ValueError):
-        SessionManager(chunk_duration=chunk, overlap=overlap)
+        SessionManager(chunk_duration=chunk, overlap=overlap, stt=FakeSTT())
