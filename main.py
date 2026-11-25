@@ -44,7 +44,7 @@ from agy_voice.stt import WhisperLocalSTT
 from audio_capture import AudioCapture
 from mcp_network import MCPHTTPService
 from session_manager import SessionManager
-from summarizer import SummarizerFactory
+from summary_service import GenerateMeetingSummary
 
 load_dotenv()
 
@@ -204,11 +204,13 @@ class AtaFlowApp(AgyApp):
         args: argparse.Namespace,
         devices: dict,
         initial_selection: DeviceSelection | None = None,
+        summary_service: GenerateMeetingSummary | None = None,
     ) -> None:
         super().__init__()
         self.args = args
         self._devices = devices
         self.initial_selection = initial_selection
+        self.summary_service = summary_service or GenerateMeetingSummary()
         self.mcp_http_service = MCPHTTPService()
 
     def compose(self) -> ComposeResult:
@@ -316,16 +318,10 @@ class AtaFlowApp(AgyApp):
     # ------------------------------------------------------------------
 
     async def _generate_summary(self, file_path: str, provider: str, model: str) -> None:
-        """Chama o summarizer e salva o resultado. Em caso de erro, nao cria o arquivo."""
+        """Apresenta o resultado do caso de uso de geração da ata."""
         self.notify(f"Gerando resumo com {provider.upper()} ({model})...", title="LLM")
-        summarizer = SummarizerFactory.get_summarizer(provider=provider, model_name=model)
         try:
-            with open(file_path, encoding="utf-8") as f:
-                full_text = f.read()
-            summary = await summarizer.summarize(full_text)
-            summary_file = file_path.replace(".txt", "-resumo.md")
-            with open(summary_file, "w", encoding="utf-8") as f:
-                f.write(summary)
+            summary_file = await self.summary_service.execute(file_path, provider, model)
             self.notify(f"Resumo salvo:\n{summary_file}", title="Resumo Gerado")
         except Exception as exc:
             logger.error(f"Erro ao gerar resumo: {exc}")

@@ -125,6 +125,9 @@ NUNCA faca commit do arquivo .env — ele ja esta no .gitignore.
 - `agy_tui/model_manager.py`: tela com catálogo, favoritos e modelo padrão, além do modal
   de escolha utilizado na geração de atas. Workers mantêm a interface responsiva.
 - `summarizer.py`: geração das atas pelo mesmo cliente utilizado nos testes dos modelos.
+- `summary_service.py`: caso de uso `GenerateMeetingSummary`, reutilizável sem TUI;
+  lê a transcrição, solicita a ata e salva o Markdown atomicamente. A interface apenas
+  chama o serviço e apresenta o resultado. O gerador pode ser injetado nos testes.
 - Testes usam `httpx.MockTransport` e o Pilot do Textual, sem chamadas reais à API.
 
 Validação específica:
