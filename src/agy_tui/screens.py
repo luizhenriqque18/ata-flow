@@ -29,6 +29,8 @@ from textual.widgets import (
 )
 
 from agy_tui.model_manager import ModelSelectionModal as ModelSelectionModal
+from ataflow.paths import TRANSCRIPTS_DIR
+from ataflow.storage import ensure_data_layout
 
 # ======================================================================
 # Dataclass compartilhado
@@ -352,7 +354,8 @@ class DashboardScreen(Screen):
         empty_msg = self.query_one("#empty-msg", Static)
         table.clear()
 
-        out_dir = Path("transcricoes")
+        ensure_data_layout()
+        out_dir = TRANSCRIPTS_DIR
         txt_files = sorted(out_dir.glob("*.txt"), reverse=True) if out_dir.exists() else []
 
         if not txt_files:

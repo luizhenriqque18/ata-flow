@@ -6,9 +6,10 @@ import os
 
 from dotenv import load_dotenv
 
+from ataflow.paths import PROJECT_DIR
 from ataflow.summaries.catalog import GeminiService
 
-load_dotenv()
+load_dotenv(PROJECT_DIR / ".env")
 
 _MEETING_PROMPT_TEMPLATE = """\
 Voce e um assistente especialista em criar atas de reunioes corporativas.

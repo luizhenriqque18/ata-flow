@@ -8,13 +8,18 @@ sao definidos aqui para evitar dependencias externas nos testes.
 from __future__ import annotations
 
 import os
+import tempfile
+from pathlib import Path
 
 import numpy as np
 import pytest
 
 # Garante que os testes nao usem variaveis de ambiente reais
-os.environ.setdefault("GEMINI_API_KEY", "test-key-fake")
-os.environ.setdefault("LLM_PROVIDER", "ollama")
+os.environ["GEMINI_API_KEY"] = "test-key-fake"
+_cache = Path(__file__).resolve().parents[1] / ".cache"
+_cache.mkdir(exist_ok=True)
+_test_home = tempfile.TemporaryDirectory(prefix="test-home-", dir=_cache)
+os.environ["ATAFLOW_HOME"] = _test_home.name
 
 
 @pytest.fixture

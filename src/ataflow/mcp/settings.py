@@ -11,9 +11,10 @@ import tempfile
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
-from ataflow.paths import PROJECT_DIR
+from ataflow.paths import MCP_PREFERENCES, PROJECT_DIR
+from ataflow.storage import ensure_data_layout
 
-SETTINGS_PATH = PROJECT_DIR / "mcp_preferences.json"
+SETTINGS_PATH = MCP_PREFERENCES
 
 
 @dataclass(frozen=True)
@@ -76,13 +77,19 @@ class MCPSettings:
             host = f"[{host}]"
         return f"http://{host}:{self.http_port}/mcp"
 
-    def directory(self, base: Path = PROJECT_DIR) -> Path:
+    def directory(self, base: Path = SETTINGS_PATH.parent) -> Path:
         path = Path(self.summaries_dir).expanduser()
         return (path if path.is_absolute() else base / path).resolve()
 
 
 class MCPSettingsStore:
-    def __init__(self, path: Path = SETTINGS_PATH) -> None:
+    def __init__(self, path: Path | None = None) -> None:
+        if path is None or Path(path).resolve() in {
+            SETTINGS_PATH,
+            PROJECT_DIR / "mcp_preferences.json",
+        }:
+            ensure_data_layout()
+            path = SETTINGS_PATH
         self.path = Path(path).resolve()
 
     def load(self) -> MCPSettings:

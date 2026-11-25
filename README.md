@@ -66,7 +66,7 @@ Abra **Gerenciar modelos** no painel inicial ou na janela de geração de atas.
 - Clique **Salvar** para manter favoritos, padrão, catálogo e resultados dos testes.
   **Cancelar** descarta as alterações feitas nessa tela.
 
-As preferências ficam em `model_preferences.json`, ignorado pelo Git, sem chaves de API.
+As preferências ficam em `var/model_preferences.json`, ignorado pelo Git, sem chaves de API.
 A listagem não executa testes de geração automaticamente. Um resultado de disponibilidade
 reflete somente o último teste; não garante a próxima geração nem avalia a qualidade da ata.
 
@@ -92,14 +92,14 @@ Para iniciar a mágica, apenas rode:
 ```powershell
 uv run ataflow
 ```
-*(💡 Dica: Se você usou nosso script `criar_atalho.bat`, basta dar duplo clique no atalho gerado na Área de Trabalho!)*
+*(💡 Dica: Se você usou nosso script `scripts/criar_atalho.bat`, basta dar duplo clique no atalho gerado na Área de Trabalho!)*
 
 ### 🎮 Fluxo de Uso:
 1. **Configuração Rápida:** A tela inicial lista seus microfones e o áudio do sistema (Loopback). Use as setas do teclado e o `Enter` para selecionar.
 2. **A Mágica Acontece:** A interface TUI inicia, mostrando a saúde do áudio, o carregamento do Whisper na sua GPU, e a transcrição ao vivo.
 3. **Encerrando a Call:** Acabou a reunião? Pressione **`Ctrl + S`**. 
    - O AtaFlow interrompe a gravação.
-   - Salva a transcrição bruta na pasta `./transcricoes/`.
+   - Salva a transcrição bruta na pasta `./var/transcricoes/`.
    - Abre a escolha do modelo Gemini e, após confirmar, aciona a IA para ler a conversa e cuspir uma **Ata Profissional em Markdown**.
    - Você é notificado e retorna ao painel, onde pode abrir a ata ou gerar resumos pendentes.
 
@@ -114,3 +114,12 @@ uv run ataflow
 Quer contribuir? O AtaFlow possui uma arquitetura altamente modular e desacoplada baseada no ecossistema `Agy`. 
 
 Consulte o arquivo [CONTRIBUTING.md](CONTRIBUTING.md) para explorar a arquitetura, entender o *Strategy Pattern* utilizado no processamento de voz (`agy_voice`), o design da TUI (`agy_tui`), e como rodar nossa suíte de testes automáticos.
+
+## Organização dos arquivos
+
+Código em `src/`, testes em `tests/`, ícones em `assets/`, utilitários em
+`scripts/` e documentação em `docs/`. Dados locais ficam em `var/` e caches em
+`.cache/`, ambos ignorados pelo Git. A atualização migra os dados legados sem
+sobrescrever arquivos existentes. Feche instâncias antigas antes de atualizar.
+Consulte [o guia de dados e migração](docs/storage.md) para conflitos, backups,
+configuração de `ATAFLOW_HOME` e compatibilidade com atalhos e MCP.

@@ -11,7 +11,9 @@ import numpy as np
 
 from agy_voice.interfaces import STTStrategy, TranscriptionSegment
 from agy_voice.processing import deduplicate
+from ataflow.paths import TRANSCRIPTS_DIR
 from ataflow.recording.capture import AudioCapture
+from ataflow.storage import ensure_data_layout
 
 logger = logging.getLogger(__name__)
 
@@ -27,12 +29,15 @@ class SessionManager:
         *,
         stt: STTStrategy,
         audio_capture: AudioCapture | None = None,
-        output_dir: str | Path = "./transcricoes",
+        output_dir: str | Path | None = None,
     ) -> None:
         if chunk_duration <= 0 or not 0 <= overlap < chunk_duration or max_queue_size <= 0:
             raise ValueError("Use duração positiva, 0 <= overlap < duração e fila positiva.")
         self.chunk_duration = chunk_duration
         self.overlap = overlap
+        if output_dir is None:
+            ensure_data_layout()
+            output_dir = TRANSCRIPTS_DIR
         self.stt = stt
         self.audio_capture = audio_capture or AudioCapture(sample_rate=self.stt.sample_rate)
         self.output_dir = Path(output_dir)

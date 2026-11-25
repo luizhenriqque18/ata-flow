@@ -16,3 +16,8 @@ def application_home() -> Path:
 
 
 PROJECT_DIR = application_home()
+DATA_DIR = PROJECT_DIR / "var"
+TRANSCRIPTS_DIR = DATA_DIR / "transcricoes"
+LOG_FILE = DATA_DIR / "logs" / "transcriber.log"
+MODEL_PREFERENCES = DATA_DIR / "model_preferences.json"
+MCP_PREFERENCES = DATA_DIR / "mcp_preferences.json"

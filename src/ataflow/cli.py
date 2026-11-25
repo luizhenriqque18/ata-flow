@@ -42,17 +42,13 @@ from agy_tui.screens import (
 )
 from agy_voice.stt import WhisperLocalSTT
 from ataflow.mcp.network import MCPHTTPService
+from ataflow.paths import LOG_FILE, PROJECT_DIR
 from ataflow.recording.capture import AudioCapture
 from ataflow.recording.session import SessionManager
+from ataflow.storage import ensure_data_layout
 from ataflow.summaries.service import GenerateMeetingSummary
 
-load_dotenv()
-
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-    handlers=[logging.FileHandler("transcriber.log", encoding="utf-8")],
-)
+load_dotenv(PROJECT_DIR / ".env")
 logger = logging.getLogger("main")
 
 
@@ -468,6 +464,18 @@ def _make_selection_from_args(
 
 def run() -> None:
     args = parse_args()
+    try:
+        ensure_data_layout()
+    except (ValueError, OSError) as exc:
+        from rich.console import Console
+
+        Console().print(f"[bold red]Não foi possível preparar os dados locais: {exc}[/]")
+        sys.exit(1)
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+        handlers=[logging.FileHandler(LOG_FILE, encoding="utf-8")],
+    )
 
     if args.list_devices:
         _cmd_list_devices()

@@ -86,3 +86,11 @@ e pela geração. As preferências usam escrita atômica e nunca incluem a chave
 Ollama não é suportado.
 
 Consulte [o guia MCP](docs/mcp.md) e [a decisão de layout](docs/architecture/adr-001-directory-layout.md).
+
+## Dados e utilitários
+
+Dados locais ficam em `var/`, caches em `.cache/`, ícones em `assets/` e os
+scripts de atalho em `scripts/`. A migração legada é implementada em
+`src/ataflow/storage.py` e validada com dados sintéticos. Os testes usam uma
+pasta `ATAFLOW_HOME` isolada; nunca devem migrar os dados reais do desenvolvedor.
+Consulte [o guia de migração](docs/storage.md) antes de alterar os caminhos.

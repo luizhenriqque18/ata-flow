@@ -13,10 +13,11 @@ from pathlib import Path
 
 import httpx
 
-from ataflow.paths import PROJECT_DIR
+from ataflow.paths import MODEL_PREFERENCES
+from ataflow.storage import ensure_data_layout
 
 GEMINI_BASE = "https://generativelanguage.googleapis.com/v1beta"
-PREFERENCES_PATH = PROJECT_DIR / "model_preferences.json"
+PREFERENCES_PATH = MODEL_PREFERENCES
 
 
 class InvalidGenerationResponse(ValueError):
@@ -67,8 +68,10 @@ class ModelPreferences:
 
 
 class PreferenceStore:
-    def __init__(self, path: Path = PREFERENCES_PATH) -> None:
-        self.path = path
+    def __init__(self, path: Path | None = None) -> None:
+        if path is None:
+            ensure_data_layout()
+        self.path = Path(path) if path is not None else PREFERENCES_PATH
 
     def load(self) -> ModelPreferences:
         if not self.path.exists():

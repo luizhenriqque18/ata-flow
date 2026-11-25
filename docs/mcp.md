@@ -11,11 +11,11 @@ mesma configuração salva.
 2. No painel inicial, abra **Servidor MCP**.
 3. Escolha a pasta compartilhada (por padrão `transcricoes`), resultados por
    página e caracteres por leitura/busca. A pasta precisa existir. Caminhos
-   relativos partem da pasta de `mcp_preferences.json`, não do cliente MCP.
+   relativos partem da pasta de `var/mcp_preferences.json`, não do cliente MCP.
 4. Ative **Permitir acesso aos resumos** e clique **Salvar**.
 5. Reabra a tela, escolha o formato de conexão e use **Copiar conexão**.
 
-As preferências ficam em `mcp_preferences.json`, ignorado pelo Git. O padrão é
+As preferências ficam em `var/mcp_preferences.json`, ignorado pelo Git. O padrão é
 desativado. Cancelar ou pressionar Escape descarta alterações não salvas.
 O texto de conexão local usa caminhos absolutos do Python e do projeto atuais;
 gere-o novamente se mover a instalação ou trocar o ambiente virtual.
@@ -72,7 +72,7 @@ use transporte **Streamable HTTP**, a URL e o cabeçalho
 `<TOKEN_CONFIGURADO_NO_ATAFLOW>` pelo token no cliente. As configurações de
 conexão copiadas não incluem o segredo automaticamente.
 
-O token é obrigatório e armazenado em `mcp_preferences.json`, ignorado pelo Git.
+O token é obrigatório e armazenado em `var/mcp_preferences.json`, ignorado pelo Git.
 Quem o tiver poderá ler os resumos compartilhados. Não compartilhe esse arquivo.
 Gerar outro token e salvar revoga o anterior nas próximas requisições. Salvar
 com a rede desativada encerra a escuta gerenciada pela interface, mantendo stdio
@@ -163,3 +163,8 @@ O servidor permite somente leitura e não envia e-mails. O chat pode redigir a
 mensagem e usar sua própria integração de e-mail quando você solicitar o envio.
 Chats hospedados na nuvem precisam alcançar a URL e suportar essa autenticação;
 endereços privados da LAN não ficam acessíveis à nuvem automaticamente.
+
+Após a reorganização, dados locais ficam em `var/`. A migração preserva o token
+e os caminhos compartilhados. Reinicie processos e clientes antigos após
+atualizar. Configurações antigas que apontam para o script da raiz e para o
+arquivo de preferências da raiz continuam aceitas. Veja [a migração de dados](storage.md).
