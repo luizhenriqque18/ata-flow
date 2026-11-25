@@ -1,4 +1,4 @@
-﻿"""
+"""
 Provedor STT local usando faster-whisper.
 
 Refatorizacao completa do transcriber.py original:
@@ -7,6 +7,7 @@ Refatorizacao completa do transcriber.py original:
 - Implementa a interface STTStrategy corretamente
 - Adiciona tipagem completa (Python 3.12+)
 """
+
 from __future__ import annotations
 
 import logging
@@ -41,7 +42,9 @@ def _inject_cuda_paths() -> None:
                 paths_to_add.append(torch_lib)
 
         if paths_to_add:
-            os.environ["PATH"] = os.pathsep.join(paths_to_add) + os.pathsep + os.environ.get("PATH", "")
+            os.environ["PATH"] = (
+                os.pathsep.join(paths_to_add) + os.pathsep + os.environ.get("PATH", "")
+            )
             logger.debug(f"CUDA paths adicionados ao PATH: {paths_to_add}")
     except Exception as exc:
         logger.debug(f"Falha ao injetar CUDA paths (ignorado): {exc}")
@@ -151,7 +154,7 @@ class WhisperLocalSTT(STTStrategy):
 
         Returns:
             Lista de TranscriptionSegment. Retorna lista vazia se nao
-            houver fala detectada ou em caso de erro.
+            houver fala detectada. Falhas do modelo são propagadas ao chamador.
         """
         if self._model is None:
             raise RuntimeError("Modelo nao carregado. Chame load() primeiro.")
@@ -188,8 +191,9 @@ class WhisperLocalSTT(STTStrategy):
                         no_speech_prob=seg.no_speech_prob,
                     )
                 )
-        except Exception as exc:
-            logger.error(f"Erro durante a transcricao: {exc}")
+        except Exception:
+            logger.exception("Erro durante a transcrição")
+            raise
 
         return results
 

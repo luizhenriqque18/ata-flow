@@ -61,6 +61,7 @@ ataflow/
 |-- main.py                   # Ponto de entrada: App Textual
 |-- audio_capture.py          # Captura WASAPI (microfone + sistema)
 |-- session_manager.py        # Orquestra audio -> STT -> arquivo
+|-- summary_service.py        # Caso de uso: transcricao -> ata salva
 |-- summarizer.py             # Resumo LLM (Gemini)
 |
 |-- agy_tui/                  # Biblioteca TUI (reutilizavel em outras ferramentas)
@@ -138,3 +139,15 @@ uv run pytest tests/test_model_catalog.py tests/agy_tui/test_model_manager.py
 
 Não salve credenciais no arquivo de preferências nem em mensagens persistidas dos testes.
 O Ollama não é mais suportado para geração de atas; configurações antigas dele são ignoradas.
+
+## Ciclo de vida da gravação
+
+`await session.start(...)` carrega o STT fora do event loop e inicia o produtor e o
+consumidor em um `TaskGroup` pertencente à sessão. `await session.finish()` para a
+captura, entrega os últimos callbacks, processa as filas e o bloco final incompleto,
+e aguarda a escrita da transcrição. Chamadas repetidas são seguras.
+
+A interface só abre a seleção de modelo após essa conclusão. Ao sair pelo Ctrl+C,
+a sessão também é finalizada antes de encerrar o aplicativo. Erros de transcrição
+ou persistência impedem a geração automática da ata e preservam o texto já salvo.
+As filas aplicam espera quando o STT está ocupado, sem descartar blocos pendentes.

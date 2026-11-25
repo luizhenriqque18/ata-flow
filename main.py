@@ -107,14 +107,11 @@ class TranscriberScreen(Screen[str | None]):
             title="Dispositivos Ativos",
         )
 
-        loop = asyncio.get_running_loop()
-        ok = await loop.run_in_executor(
-            None,
-            self.session.start,
-            self.selection.mic_index,
-            self.selection.sys_index,
-            loop,
-        )
+        try:
+            ok = await self.session.start(self.selection.mic_index, self.selection.sys_index)
+        except Exception:
+            logger.exception("Falha ao iniciar sessão")
+            ok = False
 
         if not ok:
             self.app.notify("Falha ao iniciar sessao. Verifique os logs.", severity="error")
@@ -124,17 +121,17 @@ class TranscriberScreen(Screen[str | None]):
         status.update_whisper("carregado")
         status.update_audio("capturando")
 
-        self.run_worker(self.session.run_producer(), exclusive=False, group="audio")
-        self.run_worker(self.session.run_consumer(), exclusive=False, group="audio")
         self.run_worker(self._event_listener(), exclusive=False, group="ui")
 
     async def _event_listener(self) -> None:
         log = self.query_one(TranscriptionLog)
-        while self.session.running or not self.session.session_events.empty():
+        while not self.session.finished or not self.session.session_events.empty():
             try:
                 event = await asyncio.wait_for(self.session.session_events.get(), timeout=0.5)
                 if event["type"] == "transcription":
                     log.add_transcription(event["text"].strip())
+                elif event["type"] == "error":
+                    self.app.notify(event["text"], severity="error")
             except TimeoutError:
                 continue
 
@@ -144,14 +141,32 @@ class TranscriberScreen(Screen[str | None]):
         self._stopping = True
 
         status = self.query_one(ServiceStatusBar)
+        status.update_audio("encerrando")
+        self.app.notify("Processando o áudio restante antes de gerar a ata...", title="Encerrando")
+        try:
+            output_file = await self.session.finish()
+        except Exception:
+            logger.exception("Falha ao concluir sessão")
+            self.app.notify(
+                "Falha ao concluir a transcrição. "
+                "O texto já salvo foi preservado; consulte os logs.",
+                severity="error",
+            )
+            self.dismiss(None)
+            return
         status.update_audio("parado")
-        self.session.stop()
         self.app.notify(
-            f"Transcricao salva em:\n{self.session.output_file}",
+            f"Transcricao salva em:\n{output_file}",
             title="Sessao Encerrada",
         )
         # Retorna o caminho para o App orquestrar a geracao de resumo
-        self.dismiss(self.session.output_file)
+        self.dismiss(output_file)
+
+    async def on_unmount(self) -> None:
+        try:
+            await self.session.finish()
+        except Exception:
+            logger.exception("Falha ao finalizar sessão ao fechar a tela")
 
 
 # ======================================================================
@@ -235,6 +250,15 @@ class AtaFlowApp(AgyApp):
 
     async def on_unmount(self) -> None:
         await self.mcp_http_service.stop()
+
+    async def action_quit(self) -> None:
+        for screen in self.screen_stack:
+            if isinstance(screen, TranscriberScreen):
+                try:
+                    await screen.session.finish()
+                except Exception:
+                    logger.exception("Falha ao concluir transcrição ao sair")
+        self.exit()
 
     # ------------------------------------------------------------------
     # Handlers de mensagens do Dashboard
