@@ -1,0 +1,48 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  quality:
+    name: Ruff, testes e wheel (Windows / Python 3.12)
+    runs-on: windows-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - name: Obter código
+        uses: actions/checkout@v7.0.1
+
+      - name: Preparar uv e Python
+        uses: astral-sh/setup-uv@v10.4.0
+        with:
+          version: "0.11.2"
+          python-version: "3.12"
+          enable-cache: true
+
+      - name: Instalar dependências do lockfile
+        run: uv sync --locked --extra dev
+
+      - name: Verificar lint
+        run: uv run --no-sync ruff check --output-format=github .
+
+      - name: Verificar formatação
+        run: uv run --no-sync ruff format --check .
+
+      - name: Executar testes
+        run: uv run --no-sync pytest tests/
+
+      - name: Gerar wheel
+        run: uv build --wheel --out-dir .cache/dist

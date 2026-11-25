@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "ataflow"
-version = "2.1.1"
+version = "2.2.0"
 description = "AtaFlow - Transcritor e gerador de atas de reunioes com TUI"
 readme = "README.md"
 requires-python = ">=3.12"
@@ -27,6 +27,7 @@ dev = [
     "pytest-asyncio>=0.24",
     "pytest-cov>=5.0",
     "pytest-mock>=3.14",
+    "ruff==0.17.6",
 ]
 
 [project.scripts]
@@ -35,6 +36,8 @@ transcriber = "ataflow.cli:run"
 ataflow-mcp = "ataflow.mcp.server:run"
 
 [tool.ruff]
+required-version = "==0.17.6"
+extend-exclude = [".cache", "var"]
 cache-dir = ".cache/ruff"
 target-version = "py312"
 line-length = 100

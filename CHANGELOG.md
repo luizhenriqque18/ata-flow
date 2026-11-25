@@ -1,5 +1,50 @@
 # Histórico de versões
 
+## 2.2.0 — 2026-11-25
+
+### Organização dos diretórios e comandos
+
+- Código movido para `src/ataflow`, `src/agy_tui` e `src/agy_voice`, com
+  empacotamento dos três pacotes e do tema Textual.
+- Novas entradas `uv run ataflow` e `python -m ataflow`. O alias `transcriber`
+  e os adaptadores `main.py` e `ataflow_mcp.py` continuam disponíveis.
+- Ícones em `assets/`, utilitários de atalho em `scripts/` e documentação de
+  apoio em `docs/`. Caches e temporários centralizados em `.cache/`.
+
+### Dados locais e migração
+
+- Transcrições, atas, preferências e logs passam a ficar em `var/`, ignorado
+  pelo Git. O `.env` permanece na pasta base da aplicação.
+- Migração automática preserva os favoritos, o token MCP e o significado dos
+  caminhos compartilhados. Conflitos ou configurações inválidas interrompem a
+  migração sem sobrescrever arquivos; falhas de escrita desfazem os movimentos.
+- Caminhos estáveis mesmo ao executar em outro diretório, com opção de escolher
+  a pasta base por `ATAFLOW_HOME`. Conexões MCP antigas com `--config` na raiz
+  continuam reconhecidas.
+
+### Qualidade automática
+
+- Ruff 0.17.6 incluído nas dependências de desenvolvimento e no lockfile, com
+  versão exigida para manter o mesmo padrão entre ambientes.
+- GitHub Actions verifica lint, formatação, testes e geração do wheel em
+  Windows com Python 3.12, em pushes na main e pull requests.
+- Testes incluem migração de dados, execução fora da raiz, adaptadores legados
+  e comandos instalados. Áudio e Gemini são simulados; o protocolo MCP é
+  validado localmente por stdio e HTTP.
+- Validação local: 133 testes aprovados e 1 teste de symlink ignorado por
+  limitação do Windows, com lint, formatação e construção do wheel aprovados.
+
+### Atualização
+
+Feche instâncias antigas e reinicie os clientes MCP após atualizar. Execute
+`git pull --ff-only`, `uv sync` e `uv run ataflow`. Para desenvolvimento, use
+`uv sync --extra dev`. Consulte `docs/storage.md` para backups, conflitos e
+configurações personalizadas. O atalho pode ser atualizado com
+`scripts/criar_atalho.bat`.
+
+Esta versão incrementa o número secundário por reunir novos comandos e migração
+de diretórios mantendo as entradas anteriores de execução.
+
 ## 2.1.1 — 2026-11-25
 
 ### Encerramento completo da gravação

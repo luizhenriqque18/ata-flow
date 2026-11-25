@@ -49,16 +49,29 @@ são adaptadores para atalhos e conexões MCP existentes.
 uv run pytest tests/
 uv run pytest tests/ --cov=ataflow --cov=agy_voice --cov=agy_tui
 uv run pytest tests/test_session_manager.py tests/test_summary_service.py
-uv run python -m ruff check src tests main.py ataflow_mcp.py
-uv run python -m ruff format src tests main.py ataflow_mcp.py
+uv run ruff check .
+uv run ruff format --check .
+# Correções e formatação locais:
+uv run ruff check . --fix
+uv run ruff format .
 uv build --wheel --out-dir .cache/dist
 ```
 
-Ruff precisa estar instalado no ambiente de desenvolvimento. Os caches do pytest,
+Ruff é instalado com `uv sync --extra dev`, com versão fixada no projeto e no
+lockfile. Os caches do pytest,
 Ruff e uv ficam em .cache. O pytest usa .cache/pytest-tmp para arquivos temporários;
 para execuções simultâneas, forneça um --basetemp diferente dentro de .cache.
 Testes de captura e Gemini usam implementações simuladas. Há também testes reais
 do protocolo MCP em stdio e HTTP local, sem ler reuniões do usuário.
+
+O workflow `.github/workflows/ci.yml` executa em pushes na main, pull requests e
+acionamento manual. Ele instala o lockfile em Windows com Python 3.12 e verifica
+lint, formatação, testes e construção do wheel. O CI apenas verifica o código;
+as correções são feitas localmente e versionadas. As pastas .cache e var são
+excluídas da análise de lint e formatação.
+
+Referências: [uv no GitHub Actions](https://docs.astral.sh/uv/guides/integration/github/)
+e [integrações do Ruff](https://docs.astral.sh/ruff/integrations/).
 
 ## Adicionar um provedor STT
 
