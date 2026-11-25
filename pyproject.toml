@@ -34,6 +34,7 @@ transcriber = "main:run"
 ataflow-mcp = "ataflow_mcp:run"
 
 [tool.ruff]
+cache-dir = ".cache/ruff"
 target-version = "py312"
 line-length = 100
 
@@ -49,13 +50,17 @@ quote-style = "double"
 indent-style = "space"
 
 [tool.pytest.ini_options]
+cache_dir = ".cache/pytest"
 asyncio_mode = "auto"
 testpaths = ["tests"]
-addopts = "-v --tb=short"
+addopts = "-v --tb=short --basetemp=.cache/pytest-tmp"
 
 [tool.pyright]
 pythonVersion = "3.12"
 typeCheckingMode = "standard"
+
+[tool.uv]
+cache-dir = ".cache/uv"
 [tool.hatch.build.targets.wheel]
 packages = [
     "agy_tui",
