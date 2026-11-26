@@ -1,5 +1,12 @@
 # Contribuindo com o AtaFlow
 
+## Continuidade entre sessões
+
+As instruções para agentes ficam em [AGENTS.md](AGENTS.md). O
+[protocolo de desenvolvimento e releases](docs/development-workflow.md) registra
+o fluxo de etapas, validação, commits e escolha da versão. Consulte esses arquivos
+ao iniciar uma nova tarefa e atualize-os quando uma convenção do projeto mudar.
+
 ## Ambiente
 
 Requisitos: Windows 10/11, Python 3.12+ e uv. A captura usa WASAPI.
