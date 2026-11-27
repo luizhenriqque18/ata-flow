@@ -2,14 +2,15 @@
 
 ## Continuidade entre sessões
 
-As instruções para agentes ficam em [AGENTS.md](AGENTS.md). O
-[protocolo de desenvolvimento e releases](docs/development-workflow.md) registra
+As instruções para agentes ficam em [AGENTS.md](../AGENTS.md). O
+[protocolo de desenvolvimento e releases](development-workflow.md) registra
 o fluxo de etapas, validação, commits e escolha da versão. Consulte esses arquivos
 ao iniciar uma nova tarefa e atualize-os quando uma convenção do projeto mudar.
 
 ## Ambiente
 
 Requisitos: Windows 10/11, Python 3.12+ e uv. A captura usa WASAPI.
+Execute os comandos deste guia a partir da raiz do repositório.
 
 ```powershell
 uv sync --extra dev
@@ -105,7 +106,7 @@ O cliente Gemini é compartilhado pelo catálogo, pelos testes de disponibilidad
 e pela geração. As preferências usam escrita atômica e nunca incluem a chave API.
 Ollama não é suportado.
 
-Consulte [o guia MCP](docs/mcp.md) e [a decisão de layout](docs/architecture/adr-001-directory-layout.md).
+Consulte [o guia MCP](mcp.md) e [a decisão de layout](architecture/adr-001-directory-layout.md).
 
 ## Dados e utilitários
 
@@ -113,4 +114,12 @@ Dados locais ficam em `var/`, caches em `.cache/`, ícones em `assets/` e os
 scripts de atalho em `scripts/`. A migração legada é implementada em
 `src/ataflow/storage.py` e validada com dados sintéticos. Os testes usam uma
 pasta `ATAFLOW_HOME` isolada; nunca devem migrar os dados reais do desenvolvedor.
-Consulte [o guia de migração](docs/storage.md) antes de alterar os caminhos.
+Consulte [o guia de migração](storage.md) antes de alterar os caminhos.
+
+## Navegação no editor
+
+A configuração de projeto em [.vscode/settings.json](../.vscode/settings.json)
+oculta `.cache/` e `.venv/` no explorador do VS Code. Isso afeta apenas a
+visualização; as pastas continuam disponíveis para os comandos de desenvolvimento.
+Para exibi-las novamente, altere a entrada correspondente de `files.exclude`
+para `false`.

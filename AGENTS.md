@@ -7,7 +7,7 @@ na sessão atual têm prioridade sobre as convenções deste arquivo.
 
 - Comunique-se em português. Explique as etapas antes de mudanças relevantes.
 - Confira `git status --short --branch` e preserve alterações existentes do usuário.
-- Leia [CONTRIBUTING.md](CONTRIBUTING.md) e o
+- Leia [CONTRIBUTING.md](docs/CONTRIBUTING.md) e o
   [protocolo de desenvolvimento](docs/development-workflow.md).
 - Para organização ou dados locais, consulte a
   [decisão de layout](docs/architecture/adr-001-directory-layout.md) e o
@@ -19,6 +19,9 @@ na sessão atual têm prioridade sobre as convenções deste arquivo.
   Dados em `var/`, caches em `.cache/`, ícones em `assets/` e utilitários em `scripts/`.
 - Não adicione novos módulos de aplicação na raiz. `main.py` e `ataflow_mcp.py`
   são adaptadores de compatibilidade; preserve as entradas antigas de execução.
+- Documentação em `docs/`, com índice em `docs/README.md`, guia de contribuição
+  em `docs/CONTRIBUTING.md` e histórico de versões em `docs/CHANGELOG.md`.
+  Registros históricos de implementação ficam em `docs/history/`.
 - Centralize caminhos em `src/ataflow/paths.py`; preserve a migração e os caminhos
   de configurações MCP existentes. Não sobrescreva dados em conflitos.
 - Nunca versione `.env`, tokens, preferências ou reuniões. Testes devem usar dados

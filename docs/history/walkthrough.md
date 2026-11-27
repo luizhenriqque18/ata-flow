@@ -1,4 +1,5 @@
-> Registro histórico da implementação anterior. Para a estrutura atual, consulte [CONTRIBUTING.md](../CONTRIBUTING.md).
+> Registro histórico da implementação anterior. Para a estrutura atual, consulte
+> [CONTRIBUTING.md](../CONTRIBUTING.md) e o [índice da documentação](../README.md).
 
 # Walkthrough — Refatoracao Fase 1 Concluida
 

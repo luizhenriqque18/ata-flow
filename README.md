@@ -113,13 +113,19 @@ uv run ataflow
 ## 🏗️ Para Desenvolvedores
 Quer contribuir? O AtaFlow possui uma arquitetura altamente modular e desacoplada baseada no ecossistema `Agy`. 
 
-Consulte o arquivo [CONTRIBUTING.md](CONTRIBUTING.md) para explorar a arquitetura, entender o *Strategy Pattern* utilizado no processamento de voz (`agy_voice`), o design da TUI (`agy_tui`), e como rodar nossa suíte de testes automáticos.
+Consulte o [guia de contribuição](docs/CONTRIBUTING.md) para explorar a arquitetura, entender o *Strategy Pattern* utilizado no processamento de voz (`agy_voice`), o design da TUI (`agy_tui`), e como rodar nossa suíte de testes automáticos.
+
+O [índice da documentação](docs/README.md) reúne os guias atuais, as decisões
+de arquitetura e os registros históricos. Consulte também o
+[histórico de versões](docs/CHANGELOG.md).
 
 ## Organização dos arquivos
 
 Código em `src/`, testes em `tests/`, ícones em `assets/`, utilitários em
-`scripts/` e documentação em `docs/`. Dados locais ficam em `var/` e caches em
-`.cache/`, ambos ignorados pelo Git. A atualização migra os dados legados sem
+`scripts/` e documentação em `docs/`, com registros antigos em `docs/history/`.
+O `README.md` e o `AGENTS.md` permanecem na raiz como pontos de entrada.
+Dados locais ficam em `var/` e caches em `.cache/`, ambos ignorados pelo Git.
+A atualização migra os dados legados sem
 sobrescrever arquivos existentes. Feche instâncias antigas antes de atualizar.
 Consulte [o guia de dados e migração](docs/storage.md) para conflitos, backups,
 configuração de `ATAFLOW_HOME` e compatibilidade com atalhos e MCP.

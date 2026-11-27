@@ -35,3 +35,19 @@ As configurações MCP precisam preservar o significado dos caminhos relativos.
 Cada etapa deve passar pelos testes afetados e ter um commit próprio. A migração
 do código inclui inspeção do wheel e execução das entradas instaladas. A migração
 de dados inclui casos de instalações existentes, conflitos e configurações inválidas.
+
+## Atualização: documentação em 2026-11-26
+
+O guia de contribuição e o histórico de versões também ficam em `docs/`, com
+um [índice](../README.md). O README e as instruções para agentes permanecem na
+raiz. O design original e o walkthrough anterior ficam em `docs/history/`,
+identificados como registros históricos.
+
+Essa organização reduz os arquivos versionados da raiz de dez para oito e
+agrupa a documentação para navegação. Os links relativos e o protocolo de
+desenvolvimento acompanham a mudança. Links externos para os caminhos antigos
+podem precisar de atualização; o README aponta para os novos destinos.
+
+A configuração `.vscode/settings.json` oculta `.cache/` e `.venv/` apenas no
+explorador do VS Code. Os diretórios continuam nos mesmos locais. Não há mudança
+nos dados, nos comandos instalados ou nos adaptadores de compatibilidade.

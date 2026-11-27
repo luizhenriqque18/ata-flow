@@ -1,5 +1,14 @@
 # Histórico de versões
 
+## Em desenvolvimento
+
+- Guia de contribuição e histórico de versões reunidos em `docs/`, com índice
+  de navegação em `docs/README.md` e referências atualizadas.
+- Design original e walkthrough separados em `docs/history/` como registros
+  históricos; os guias atuais continuam destacados no índice.
+- Configuração do VS Code oculta `.cache/` e `.venv/` no explorador, mantendo
+  os diretórios disponíveis para as ferramentas.
+
 ## 2.2.0 — 2026-11-25
 
 ### Organização dos diretórios e comandos
@@ -38,7 +47,7 @@
 
 Feche instâncias antigas e reinicie os clientes MCP após atualizar. Execute
 `git pull --ff-only`, `uv sync` e `uv run ataflow`. Para desenvolvimento, use
-`uv sync --extra dev`. Consulte `docs/storage.md` para backups, conflitos e
+`uv sync --extra dev`. Consulte [o guia de dados](storage.md) para backups, conflitos e
 configurações personalizadas. O atalho pode ser atualizado com
 `scripts/criar_atalho.bat`.
 
@@ -128,7 +137,7 @@ Para executar o HTTP sem a interface, depois de configurar e ativar o acesso:
 uv run python ataflow_mcp.py --transport streamable-http
 ```
 
-Consulte o [guia MCP](docs/mcp.md) para configurar a segunda máquina, o token,
+Consulte o [guia MCP](mcp.md) para configurar a segunda máquina, o token,
 o Codex e o Windows Firewall. O servidor independente precisa permanecer em
 execução; ele não instala um serviço automático do Windows.
 

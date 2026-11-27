@@ -1,3 +1,7 @@
+> Registro histórico do design inicial. Os requisitos e caminhos abaixo refletem
+> aquela proposta. Para o funcionamento atual, consulte o [README](../../README.md)
+> e o [guia de contribuição](../CONTRIBUTING.md).
+
 **Documento de Design --- Transcrição Local CLI**
 
 **1. Visão geral**

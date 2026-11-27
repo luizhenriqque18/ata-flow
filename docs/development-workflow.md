@@ -19,7 +19,7 @@ precisam de verificações que detectem regressões, usando as fixtures existent
 Alterações apenas de documentação devem ter conteúdo, links e diff revisados.
 Não informe que um teste passou quando ele não foi executado.
 
-Use os comandos de [CONTRIBUTING.md](../CONTRIBUTING.md). Ruff e suas regras são
+Use os comandos de [CONTRIBUTING.md](CONTRIBUTING.md). Ruff e suas regras são
 definidos em pyproject.toml; a versão instalada vem do uv.lock. Não introduza outro
 formatador ou regras paralelas sem uma necessidade discutida na tarefa.
 Atualize dependências e o lockfile com uv quando necessário ao escopo; evite
@@ -28,8 +28,11 @@ atualizações de pacotes sem relação com a mudança solicitada.
 ## Organização e dados
 
 Siga o [layout aceito](architecture/adr-001-directory-layout.md), mantendo a raiz
-com metadados, documentação principal e os adaptadores legados. Novos arquivos
-temporários devem ficar em .cache, não em diretórios novos espalhados na raiz.
+com metadados, README, AGENTS e os adaptadores legados. A documentação fica em
+`docs/`, com [índice](README.md), [guia de contribuição](CONTRIBUTING.md) e
+[histórico de versões](CHANGELOG.md). Registros de implementação anteriores
+ficam em `docs/history/`. Novos arquivos temporários devem ficar em `.cache/`,
+não em diretórios novos espalhados na raiz.
 
 Mudanças de caminhos, preferências ou formatos de dados precisam preservar as
 instalações existentes e incluir testes de migração. Não use reuniões reais ou
@@ -60,8 +63,8 @@ Com a publicação autorizada para a tarefa:
 
 1. Confira as tags e releases remotas, a branch e o estado do Git.
 2. Atualize a versão em pyproject.toml, sincronize uv.lock com uv e alinhe o
-   cabeçalho do README. Adicione a entrada em CHANGELOG com data, comportamento,
-   instruções de atualização e validação efetivamente realizada.
+   cabeçalho do README. Adicione a entrada em [docs/CHANGELOG.md](CHANGELOG.md)
+   com data, comportamento, instruções de atualização e validação efetivamente realizada.
 3. Execute lint, formatação, suíte completa e construção do wheel. Para mudanças
    de estrutura ou comandos, valide também as entradas instaladas e o pacote.
 4. Registre o commit de versão e envie os commits da tarefa, preservando os
@@ -69,7 +72,7 @@ Com a publicação autorizada para a tarefa:
 5. Aguarde o sucesso do CI correspondente ao SHA enviado. Investigue falhas antes
    de continuar; não reduza as verificações para esconder problemas.
 6. Crie a tag anotada vMAJOR.MINOR.PATCH no commit validado e publique a release
-   no GitHub com as notas do CHANGELOG. Não substitua uma tag já publicada.
+   no GitHub com as notas de `docs/CHANGELOG.md`. Não substitua uma tag já publicada.
 7. Confira se release, tag, commit remoto e CI correspondem entre si. Informe
    o link da release e a situação final do repositório.
 
